@@ -188,17 +188,24 @@ MyMessage& MyMessage::setDestination(uint8_t _destination) {
 
 // Set payload
 MyMessage& MyMessage::set(void* value, uint8_t length) {
+	length = value == NULL ? 0 : min(length, MAX_PAYLOAD);
 	miSetPayloadType(P_CUSTOM);
 	miSetLength(length);
-	memcpy(data, value, min(length, MAX_PAYLOAD));
+	if (length)
+		memcpy(data, value, length);
+	else
+		data[0] = '\0';
 	return *this;
 }
 
 MyMessage& MyMessage::set(const char* value) {
-	uint8_t length = min(strlen(value), MAX_PAYLOAD);
+	uint8_t length = value == NULL ? 0 : min(strlen(value), MAX_PAYLOAD);
 	miSetLength(length);
 	miSetPayloadType(P_STRING);
-	strncpy(data, value, length);
+	if (length)
+		strncpy(data, value, length);
+	else
+		data[0] = '\0';
 	return *this;
 }
 

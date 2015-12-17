@@ -32,6 +32,7 @@
 #define MySigningHmac256Soft_h
 
 #include "MyConfig.h"
+#include "MySensor.h"
 #include "MySigning.h"
 #include "utility/ATSHA204.h"
 #include "utility/sha256.h"
@@ -54,12 +55,15 @@ typedef struct {
 class MySigningAtsha204Soft : public MySigning
 { 
 public:
-	MySigningAtsha204Soft(bool requestSignatures=true,
+	MySigningAtsha204Soft(bool requestSignatures=true
 #ifdef MY_SECURE_NODE_WHITELISTING
-		uint8_t nof_whitelist_entries=0, const whitelist_entry_t* the_whitelist=NULL,
-		const uint8_t* the_serial=NULL, //SHA204_SERIAL_SZ sized buffer expected if provided
+		, uint8_t nof_whitelist_entries=0, const whitelist_entry_t* the_whitelist=NULL,
+		const uint8_t* the_serial=NULL //SHA204_SERIAL_SZ sized buffer expected if provided
 #endif
-		uint8_t randomseedPin=MY_RANDOMSEED_PIN);
+#if defined(ARDUINO_ARCH_AVR)
+		, uint8_t randomseedPin=MY_RANDOMSEED_PIN
+#endif
+		);
 	bool getNonce(MyMessage &msg);
 	bool checkTimer(void);
 	bool putNonce(MyMessage &msg);
@@ -72,7 +76,9 @@ private:
 	uint8_t current_nonce[NONCE_NUMIN_SIZE_PASSTHROUGH];
 	uint8_t temp_message[32];
 	static uint8_t hmacKey[32];
+#if defined(ARDUINO_ARCH_AVR)
 	uint8_t rndPin;
+#endif
 	uint8_t hmac[32];
 	void calculateSignature(MyMessage &msg);
 #ifdef MY_SECURE_NODE_WHITELISTING

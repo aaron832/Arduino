@@ -6,6 +6,7 @@
  version 2 as published by the Free Software Foundation.
  */
 
+#if defined(ARDUINO)
 #include "nRF24L01.h"
 #include "RF24_config.h"
 #include "RF24.h"
@@ -1383,3 +1384,4 @@ void SPIClass::setClockDivider(uint8_t rate){}
 
 
 #endif
+#endif  // #if defined(ARDUINO)

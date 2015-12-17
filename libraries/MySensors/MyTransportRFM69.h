@@ -24,7 +24,9 @@
 #include "MyTransport.h"
 #include <stdint.h>
 #include "utility/RFM69.h"
-#include <SPI.h>
+#if defined(ARDUINO)
+	#include <SPI.h>
+#endif
 
 
 class MyTransportRFM69 : public MyTransport

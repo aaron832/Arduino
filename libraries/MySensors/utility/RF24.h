@@ -12,6 +12,7 @@
  * Class declaration for RF24 and helper enums
  */
 
+#if defined(ARDUINO)
 #ifndef __RF24_H__
 #define __RF24_H__
 
@@ -1210,5 +1211,5 @@ private:
  */
 
 #endif // __RF24_H__
-
+#endif // #if defined(ARDUINO)
 

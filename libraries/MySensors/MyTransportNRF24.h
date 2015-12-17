@@ -23,8 +23,14 @@
 #include "MyConfig.h"
 #include "MyTransport.h"
 #include <stdint.h>
-#include "utility/RF24.h"
-#include "utility/RF24_config.h"
+#if defined(ARDUINO)
+	#include "utility/RF24.h"
+	#include "utility/RF24_config.h"
+#else
+	typedef bool boolean;
+	#include "RF24.h"
+	#include "RF24_config.h"
+#endif
 
 #define TO_ADDR(x) (RF24_BASE_RADIO_ID + x)
 
@@ -36,6 +42,9 @@ class MyTransportNRF24 : public MyTransport
 { 
 public:
 	MyTransportNRF24(uint8_t ce=RF24_CE_PIN, uint8_t cs=RF24_CS_PIN, uint8_t paLevel=RF24_PA_LEVEL);
+#ifdef RF24_RPi
+	MyTransportNRF24(uint8_t ce, uint8_t cs, uint8_t paLevel, uint32_t spispeed);
+#endif
 	bool init();
 	void setAddress(uint8_t address);
 	uint8_t getAddress();

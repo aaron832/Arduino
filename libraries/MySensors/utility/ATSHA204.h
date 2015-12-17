@@ -1,6 +1,8 @@
 #ifndef ATSHA204_H
 #define ATSHA204_H
-#include "Arduino.h"
+#if defined(ARDUINO)
+	#include "Arduino.h"
+#endif
 
 /* This is a scaled down variant of the ATSHA204 library, tweaked to meet the specific needs of MySensors. */
 

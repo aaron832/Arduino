@@ -3,7 +3,11 @@
 	#include <avr/pgmspace.h>
 	#define PRIPSTR "%S"
 #elif defined(ESP8266)
-#include <pgmspace.h>
+	#include <pgmspace.h>
+#else
+	#define PROGMEM
+	#define memcpy_P memcpy
+	#define pgm_read_dword(x) (*x)
 #endif
 #include "sha256.h"
 

@@ -150,7 +150,7 @@ void MySensor::errBlink(uint8_t cnt) {
 }
 #endif
 
-void MySensor::begin(void (*_msgCallback)(const MyMessage &), uint8_t _nodeId, boolean _repeaterMode, uint8_t _parentNodeId) {
+void MySensor::begin(void (*_msgCallback)(const MyMessage &), uint8_t _nodeId, bool _repeaterMode, uint8_t _parentNodeId) {
     #ifdef ENABLED_SERIAL
 	    hw_init();
     #endif
@@ -299,7 +299,7 @@ void MySensor::setupNode() {
 }
 
 void MySensor::findParentNode() {
-	static boolean findingParentNode = false;
+	static bool findingParentNode = false;
 
 	if (findingParentNode)
 		return;
@@ -322,7 +322,7 @@ void MySensor::findParentNode() {
 	findingParentNode = false;
 }
 
-boolean MySensor::sendRoute(MyMessage &message) {
+bool MySensor::sendRoute(MyMessage &message) {
 	uint8_t sender = message.sender;
 	uint8_t dest = message.destination;
 	uint8_t last = message.last;
@@ -464,7 +464,7 @@ boolean MySensor::sendRoute(MyMessage &message) {
 	return ok;
 }
 
-boolean MySensor::sendWrite(uint8_t to, MyMessage &message) {
+bool MySensor::sendWrite(uint8_t to, MyMessage &message) {
 	mSetVersion(message, PROTOCOL_VERSION);
 	uint8_t length = mGetSigned(message) ? MAX_MESSAGE_LENGTH : mGetLength(message);
 	message.last = nc.nodeId;
@@ -513,7 +513,7 @@ void MySensor::requestTime(void (* _timeCallback)(unsigned long)) {
 	sendRoute(build(msg, nc.nodeId, GATEWAY_ADDRESS, NODE_SENSOR_ID, C_INTERNAL, I_TIME, false).set(""));
 }
 
-boolean MySensor::process() {
+bool MySensor::process() {
 	hw_watchdogReset();
 
 #ifdef WITH_LEDS_BLINKING
@@ -553,6 +553,7 @@ boolean MySensor::process() {
 	(void)signer.checkTimer(); // Manage signing timeout
 #endif
 
+	memset(&msg,0,sizeof(MyMessage));
 	uint8_t len = radio.receive((uint8_t *)&msg);
 	(void)len; //until somebody makes use of 'len'
 #ifdef WITH_LEDS_BLINKING

@@ -17,6 +17,7 @@
  * version 2 as published by the Free Software Foundation.
  */
 
+#include <string.h>
 #include "MyTransport.h"
 #include "MyTransportRFM69.h"
 

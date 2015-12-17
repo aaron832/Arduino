@@ -32,6 +32,7 @@
 // Please maintain this license information along with authorship
 // and copyright notices in any redistribution of this code
 
+#if defined(ARDUINO)
 #include "SPIFlash.h"
 
 uint8_t SPIFlash::UNIQUEID[8];
@@ -297,3 +298,5 @@ void SPIFlash::wakeup() {
 void SPIFlash::end() {
   SPI.end();
 }
+
+#endif

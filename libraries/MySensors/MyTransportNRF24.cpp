@@ -28,6 +28,16 @@ MyTransportNRF24::MyTransportNRF24(uint8_t ce, uint8_t cs, uint8_t paLevel)
 {
 }
 
+#ifdef RF24_RPi
+MyTransportNRF24::MyTransportNRF24(uint8_t ce, uint8_t cs, uint8_t paLevel, uint32_t spispeed)
+	:
+	MyTransport(),
+	rf24(ce, cs, spispeed),
+	_paLevel(paLevel)
+{
+}
+#endif
+
 bool MyTransportNRF24::init() {
 	// Start up the radio library
 	rf24.begin();

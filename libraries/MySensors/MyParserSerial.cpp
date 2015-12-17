@@ -17,6 +17,7 @@
  * version 2 as published by the Free Software Foundation.
  */
 
+#include <stdlib.h>
 #include "MyParser.h"
 #include "MyParserSerial.h"
 #include "MyTransport.h"

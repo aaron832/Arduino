@@ -267,4 +267,5 @@ uint8_t* MySigningAtsha204::sha256(const uint8_t* data, size_t sz) {
 	DEBUG_SIGNING_PRINTBUF(F("SHA:"), &rx_buffer[SHA204_BUFFER_POS_DATA], 32);
 	return &rx_buffer[SHA204_BUFFER_POS_DATA];
 }
+
 #endif // #if defined(ARDUINO_ARCH_AVR)

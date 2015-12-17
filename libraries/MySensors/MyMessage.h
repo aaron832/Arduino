@@ -22,7 +22,16 @@
 #define MyMessage_h
 
 #ifdef __cplusplus
-#include <Arduino.h>
+#if defined(ARDUINO)
+	#include <Arduino.h>
+#else
+	#include <utility/itoa.h>
+	#include <utility/ltoa.h>
+	#include <utility/dtostrf.h>
+	#include <utility/utoa.h>
+	#include <utility/ultoa.h>
+	#define min(a,b) (a<b?a:b)
+#endif
 #include <string.h>
 #include <stdint.h>
 #endif

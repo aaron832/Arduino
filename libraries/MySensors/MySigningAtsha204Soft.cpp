@@ -28,6 +28,10 @@
  *
  */
 
+#if !defined(ARDUINO_ARCH_AVR)
+	#include <time.h>
+	#include <stdlib.h>
+#endif
 #include "MyConfig.h"
 #include "MySigning.h"
 #include "MySigningAtsha204Soft.h"
@@ -66,12 +70,15 @@ static void DEBUG_SIGNING_PRINTBUF(const __FlashStringHelper* str, uint8_t* buf,
 // Initialize hmacKey from MyConfig.h (codebender didn't like static initialization in constructor)
 uint8_t MySigningAtsha204Soft::hmacKey[32] = { MY_HMAC_KEY };
 
-MySigningAtsha204Soft::MySigningAtsha204Soft(bool requestSignatures,
+MySigningAtsha204Soft::MySigningAtsha204Soft(bool requestSignatures
 #ifdef MY_SECURE_NODE_WHITELISTING
-	uint8_t nof_whitelist_entries, const whitelist_entry_t* the_whitelist,
-	const uint8_t* the_serial,
+	, uint8_t nof_whitelist_entries, const whitelist_entry_t* the_whitelist,
+	const uint8_t* the_serial
 #endif
-	uint8_t randomseedPin)
+#if defined(ARDUINO_ARCH_AVR)
+	, uint8_t randomseedPin
+#endif
+	)
 	:
 	MySigning(requestSignatures),
 #ifdef MY_SECURE_NODE_WHITELISTING
@@ -80,20 +87,26 @@ MySigningAtsha204Soft::MySigningAtsha204Soft(bool requestSignatures,
 	node_serial_info(the_serial),
 #endif
 	Sha256(),
-	verification_ongoing(false),
-	rndPin(randomseedPin)
+	verification_ongoing(false)
+#if defined(ARDUINO_ARCH_AVR)
+	, rndPin(randomseedPin)
+#endif
 {
 }
 
 bool MySigningAtsha204Soft::getNonce(MyMessage &msg) {
 	// Set randomseed
+#if defined(ARDUINO_ARCH_AVR)
 	randomSeed(analogRead(rndPin));
+#else
+	srand(time(NULL));
+#endif
 
 	// We used a basic whitening technique that takes the first byte of a new random value and builds up a 32-byte random value
 	// This 32-byte random value is then hashed (SHA256) to produce the resulting nonce
 	Sha256.init();
 	for (int i = 0; i < 32; i++) {
-		Sha256.write(random(255));
+		Sha256.write(random() % 255);
 	}
 	memcpy(current_nonce, Sha256.result(), MAX_PAYLOAD);
 
@@ -106,17 +119,17 @@ bool MySigningAtsha204Soft::getNonce(MyMessage &msg) {
 	// Transfer the first part of the nonce to the message
 	msg.set(current_nonce, MAX_PAYLOAD);
 	verification_ongoing = true;
-	timestamp = millis(); // Set timestamp to determine when to purge nonce
+	timestamp = hw_millis(); // Set timestamp to determine when to purge nonce
 	// Be a little fancy to handle turnover (prolong the time allowed to timeout after turnover)
 	// Note that if message is "too" quick, and arrives before turnover, it will be rejected
 	// but this is consider such a rare case that it is accepted and rejects are 'safe'
-	if (timestamp + MY_VERIFICATION_TIMEOUT_MS < millis()) timestamp = 0;
+	if (timestamp + MY_VERIFICATION_TIMEOUT_MS < hw_millis()) timestamp = 0;
 	return true;
 }
 
 bool MySigningAtsha204Soft::checkTimer() {
 	if (verification_ongoing) {
-		if (millis() < timestamp || millis() > timestamp + MY_VERIFICATION_TIMEOUT_MS) {
+		if (hw_millis() < timestamp || hw_millis() > timestamp + MY_VERIFICATION_TIMEOUT_MS) {
 			DEBUG_SIGNING_PRINTLN(F("VT")); // VT = Verification timeout
 			// Purge nonce
 			memset(current_nonce, 0xAA, 32);

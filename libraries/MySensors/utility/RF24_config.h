@@ -9,6 +9,7 @@
  Added Arduino Due support from https://github.com/mcrosson/
  */
 
+#if defined(ARDUINO)
 #ifndef __RF24_CONFIG_H__
 #define __RF24_CONFIG_H__
 	#include <MyConfig.h>
@@ -171,6 +172,6 @@ public:
 };
 extern SPIClass SPI;
 
-#endif //ATTiny
+#endif // ATTiny
 #endif // __RF24_CONFIG_H__
-
+#endif // #if defined(ARDUINO)

@@ -32,6 +32,7 @@
 // Please maintain this license information along with authorship
 // and copyright notices in any redistribution of this code
 
+#if defined(ARDUINO)
 #ifndef _SPIFLASH_H_
 #define _SPIFLASH_H_
 
@@ -121,3 +122,4 @@ protected:
 };
 
 #endif
+#endif  // #if defined(ARDUINO)
