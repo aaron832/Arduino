@@ -3,7 +3,9 @@
  * Written by Lukás Chmela
  * Released under GPLv3.
  */
- 
+
+#ifndef ARDUINO
+
 #include "ltoa.h"
 
 char *ltoa(long value, char* result, int base) {
@@ -29,3 +31,5 @@ char *ltoa(long value, char* result, int base) {
 	}
 	return result;
 }
+
+#endif

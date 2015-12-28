@@ -1,3 +1,5 @@
+#ifndef ARDUINO
+
 #include "ultoa.h"
 
 char *ultoa(long num, char *str, int radix)
@@ -38,3 +40,5 @@ char *ultoa(long num, char *str, int radix)
 
   return str;
 }
+
+#endif

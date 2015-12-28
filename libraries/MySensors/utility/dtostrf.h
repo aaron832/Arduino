@@ -1,3 +1,5 @@
+#ifndef ARDUINO
+
 #ifndef DTOSTRF_H
 #define DTOSTRF_H
 
@@ -9,6 +11,8 @@ char * dtostrf(float f, int width, int decimals, char *result);
 
 #ifdef __cplusplus
 }
+#endif
+
 #endif
 
 #endif

@@ -28,7 +28,9 @@
  * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  */
- 
+
+#ifndef ARDUINO
+
 #include "utoa.h"
 
 char *utoa(int num, char *str, int radix)
@@ -69,3 +71,5 @@ char *utoa(int num, char *str, int radix)
 
   return str;
 }
+
+#endif

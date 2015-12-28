@@ -4,6 +4,8 @@
 * Released under GPLv3.
 */
 
+#ifndef ARDUINO
+
 #include "itoa.h"
 
 char *itoa(int value, char* result, int base) {
@@ -30,3 +32,5 @@ char *itoa(int value, char* result, int base) {
 	}
 	return result;
 }
+
+#endif
