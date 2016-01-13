@@ -22,6 +22,7 @@
 #include <algorithm>
 #include <vector>
 #include <list>
+#include <signal.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -38,9 +39,26 @@
 #include <MySensor.h>
 #include <RF24.h>
 
+//#define USE_INTERRUPT
+// Oitzu (https://github.com/Oitzu) made possible the use of interrupts
+// that reduce CPU utilization and increases throughput
+// For this to work, you need two things:
+//   - Install http://wiringpi.com/
+//   - Connect the nRF24L01 IRQ pin to a free raspberry gpio pin
+//     The Pin numbering of the nrf24 library is bcm style
+//     You can see the pin numbering on your RPi with "gpio readall"
+//     The BCM column is the right column to look at.
+#define INTERRUPT_PIN 23
+
 #define CONTROLLER_PORT "5003"  // the port controllers will be connecting to
 #define BACKLOG 10     // how many pending connections queue will hold
 #define MAXDATASIZE 100 // max number of bytes we can get at once
+
+struct radio_message {
+	MyMessage msg;
+	uint8_t to;
+	uint8_t len;
+};
 
 void msg_callback(const MyMessage &message);
 void *get_in_addr(struct sockaddr *sa);
@@ -49,26 +67,57 @@ void *connected_controller(void* thread_arg);
 void parse_and_send(long int sockfd, char *buffer);
 
 MySensor *gw;
+// NRFRF24L01 radio driver
+#ifdef __PI_BPLUS
+	static MyTransportNRF24 transport(RPI_BPLUS_GPIO_J8_22, RPI_BPLUS_GPIO_J8_24, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
+#else
+	static MyTransportNRF24 transport(RPI_V2_GPIO_P1_22, BCM2835_SPI_CS0, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
+#endif
 MyParserSerial parser;
 
-std::vector<int> controllers_sockets;
-std::list<MyMessage> send_messages_q;
+static std::vector<int> controllers_sockets;
+static std::list<MyMessage> send_messages_q;
+static std::list<struct radio_message > radio_messages_q;
 static pthread_mutex_t send_messages_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t controllers_sockets_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t radio_messages_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+volatile static int running = 1;
+
+/*
+ * handler for SIGINT signal
+ */
+void handle_sigint(int sig)
+{
+	running = 0;
+	std::cout << "Received SIGINT\n" << std::endl;
+}
+
+void intHandler()
+{
+	struct radio_message r_msg;
+	
+	//Read as long data is available
+	//Single interrupts may be lost if a lot of data comes in.
+	while (transport.available(&r_msg.to)) {
+		memset(&r_msg.msg, 0, sizeof(MyMessage));
+		r_msg.len = transport.receive((uint8_t *)&r_msg.msg);
+		pthread_mutex_lock(&radio_messages_mutex);
+		radio_messages_q.push_back(r_msg);
+		pthread_mutex_unlock(&radio_messages_mutex);
+	}
+}
 
 int main()
 {
 	pthread_t thread_id;
 	pthread_attr_t attr;
-	
+
+	/* register the signal handler */
+	signal(SIGINT, handle_sigint);
+	signal(SIGTERM, handle_sigint);
+
 	std::cout << "Starting Gateway..." << std::endl;
-	
-	// NRFRF24L01 radio driver
-#ifdef __PI_BPLUS
-	MyTransportNRF24 transport(RPI_BPLUS_GPIO_J8_22, RPI_BPLUS_GPIO_J8_24, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
-#else
-	MyTransportNRF24 transport(RPI_V2_GPIO_P1_22, BCM2835_SPI_CS0, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
-#endif
 
 	// Hardware profile
 	MyHwDriver hw;
@@ -101,9 +150,28 @@ int main()
 	pthread_create(&thread_id, &attr, &waiting_controllers, NULL);
 	pthread_attr_destroy(&attr);
 
-	while(1) {
+#ifdef USE_INTERRUPT
+	attachInterrupt(INTERRUPT_PIN, INT_EDGE_FALLING, intHandler);
+#endif
+
+	while(running) {
 		/* process radio msgs */
+#ifdef USE_INTERRUPT
+		if (pthread_mutex_trylock(&radio_messages_mutex) == 0) {
+			while (!radio_messages_q.empty()) {
+				struct radio_message r_msg = radio_messages_q.front();
+				radio_messages_q.pop_front();
+
+				MyMessage &message = gw->getLastMessage();
+				message = r_msg.msg;
+				gw->process(r_msg.to);
+			}
+			pthread_mutex_unlock(&radio_messages_mutex);
+		}
+#else
 		gw->process();
+#endif
+
 		pthread_mutex_lock(&send_messages_mutex);
 		while (!send_messages_q.empty()) {
 			MyMessage msg = send_messages_q.back();
@@ -112,8 +180,13 @@ int main()
 			gw->sendRoute(msg);
 		}
 		pthread_mutex_unlock(&send_messages_mutex);
+
 		usleep(10000);	// 10ms
 	}
+
+#ifdef USE_INTERRUPT
+	detachInterrupt(INTERRUPT_PIN);
+#endif
 
 	return 0;
 }

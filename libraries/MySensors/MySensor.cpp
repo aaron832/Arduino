@@ -513,7 +513,7 @@ void MySensor::requestTime(void (* _timeCallback)(unsigned long)) {
 	sendRoute(build(msg, nc.nodeId, GATEWAY_ADDRESS, NODE_SENSOR_ID, C_INTERNAL, I_TIME, false).set(""));
 }
 
-bool MySensor::process() {
+bool MySensor::process(int receivedTo) {
 	hw_watchdogReset();
 
 #ifdef WITH_LEDS_BLINKING
@@ -521,41 +521,49 @@ bool MySensor::process() {
 #endif
 
 	uint8_t to = 0;
-	if (!radio.available(&to))
-	{
+
+	if (receivedTo != -1) {
+		to = receivedTo;
+	} else {
+		if (!radio.available(&to))
+		{
 #ifdef MY_OTA_FIRMWARE_FEATURE
-		unsigned long enter = hw_millis();
-		if (fwUpdateOngoing && (enter - fwLastRequestTime > MY_OTA_RETRY_DELAY)) {
-			if (!fwRetry) {
-				debug(PSTR("fw upd fail\n"));
-				// Give up. We have requested MY_OTA_RETRY times without any packet in return.
-				fwUpdateOngoing = false;
+			unsigned long enter = hw_millis();
+			if (fwUpdateOngoing && (enter - fwLastRequestTime > MY_OTA_RETRY_DELAY)) {
+				if (!fwRetry) {
+					debug(PSTR("fw upd fail\n"));
+					// Give up. We have requested MY_OTA_RETRY times without any packet in return.
+					fwUpdateOngoing = false;
 #ifdef WITH_LEDS_BLINKING
-				errBlink(1);
+					errBlink(1);
 #endif
-				return false;
+					return false;
+				}
+				fwRetry--;
+				fwLastRequestTime = enter;
+				// Time to (re-)request firmware block from controller
+				RequestFWBlock *firmwareRequest = (RequestFWBlock *)msg.data;
+				mSetLength(msg, sizeof(RequestFWBlock));
+				firmwareRequest->type = fc.type;
+				firmwareRequest->version = fc.version;
+				firmwareRequest->block = (fwBlock - 1);
+				sendRoute(build(msg, nc.nodeId, GATEWAY_ADDRESS, NODE_SENSOR_ID, C_STREAM, ST_FIRMWARE_REQUEST, false));
 			}
-			fwRetry--;
-			fwLastRequestTime = enter;
-			// Time to (re-)request firmware block from controller
-			RequestFWBlock *firmwareRequest = (RequestFWBlock *)msg.data;
-			mSetLength(msg, sizeof(RequestFWBlock));
-			firmwareRequest->type = fc.type;
-			firmwareRequest->version = fc.version;
-			firmwareRequest->block = (fwBlock - 1);
-			sendRoute(build(msg, nc.nodeId, GATEWAY_ADDRESS, NODE_SENSOR_ID, C_STREAM, ST_FIRMWARE_REQUEST, false));
-		}
 #endif
-		return false;
+			return false;
+		}
 	}
 
 #ifdef MY_SIGNING_FEATURE
 	(void)signer.checkTimer(); // Manage signing timeout
 #endif
 
-	memset(&msg,0,sizeof(MyMessage));
-	uint8_t len = radio.receive((uint8_t *)&msg);
-	(void)len; //until somebody makes use of 'len'
+	if (receivedTo == -1) {
+		memset(&msg,0,sizeof(MyMessage));
+		uint8_t len = radio.receive((uint8_t *)&msg);
+		(void)len; //until somebody makes use of 'len'
+	}
+
 #ifdef WITH_LEDS_BLINKING
 	rxBlink(1);
 #endif

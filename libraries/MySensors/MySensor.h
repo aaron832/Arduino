@@ -250,7 +250,7 @@ class MySensor
 	* Returns true if there is a message addressed for this node just was received.
 	* Use callback to handle incoming messages.
 	*/
-	boolean process();
+	boolean process(int receivedTo=-1);
 
 	/**
 	 * Returns the most recent node configuration received from controller
