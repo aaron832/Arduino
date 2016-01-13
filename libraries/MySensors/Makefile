@@ -21,7 +21,14 @@ endif
 
 # The recommended compiler flags for the Raspberry Pi
 CCFLAGS=-Ofast -mfpu=vfp -mfloat-abi=hard -march=$(ARCH) -mtune=arm1176jzf-s -DRASPBERRYPI_ARCH $(OPTFLAGS)
-#CCFLAGS=-g -Wall -Wextra
+#CCFLAGS+=-g -Wall -Wextra
+
+# get PI Revision from cpuinfo
+PIREV := $(shell cat /proc/cpuinfo | grep Revision | cut -f 2 -d ":" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$$//')
+ifeq (${PIREV},$(filter ${PIREV},a01041 a21041 0010))
+	# a01041 and a21041 are PI 2 Model B with BPLUS Layout and 0010 is Pi Model B+ with BPLUS Layout
+	CCFLAGS += -D__PI_BPLUS
+endif 
 
 MYSENSORS_LIB=build/libmysensors.a
 SO_MYSENSORS_LIB=$(patsubst %.a,%.so,$(MYSENSORS_LIB))
@@ -29,17 +36,17 @@ LIB_MYSENSORS_SRCS=$(wildcard ./*.cpp ./utility/*.cpp)
 LIB_MYSENSORS_OBJS=$(patsubst %.cpp,%.o,$(LIB_MYSENSORS_SRCS))
 DEPS=$(patsubst %.cpp,%.d,$(LIB_MYSENSORS_SRCS))
 
-GATEWAY_BASIC=bin/PiGatewayBasic
+GATEWAY_BASIC=examples_RPi/PiGatewayBasic
 GATEWAY_BASIC_SOURCES=examples_RPi/PiGatewayBasic.cpp
 GATEWAY_BASIC_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_BASIC_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_BASIC_SOURCES))
 
-GATEWAY_SERIAL=bin/PiGatewaySerial
+GATEWAY_SERIAL=examples_RPi/PiGatewaySerial
 GATEWAY_SERIAL_SOURCES=examples_RPi/PiGatewaySerial.cpp
 GATEWAY_SERIAL_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_SERIAL_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_SERIAL_SOURCES))
 
-GATEWAY_ETHERNET=bin/PiGatewayEthernet
+GATEWAY_ETHERNET=examples_RPi/PiGatewayEthernet
 GATEWAY_ETHERNET_SOURCES=examples_RPi/PiGatewayEthernet.cpp
 GATEWAY_ETHERNET_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_ETHERNET_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_ETHERNET_SOURCES))
@@ -47,7 +54,7 @@ DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_ETHERNET_SOURCES))
 RF24H = /usr/local/include/RF24
 CINCLUDE=-I. -I${RF24H}
 
-.PHONY: all build bin clean install uninstall
+.PHONY: all build clean install uninstall
 
 all: ${GATEWAY_BASIC} ${GATEWAY_SERIAL} ${GATEWAY_ETHERNET}
 
@@ -62,24 +69,21 @@ $(SO_MYSENSORS_LIB): $(MYSENSORS_LIB) $(LIB_MYSENSORS_OBJS)
 	$(CC) -shared -o $@ $(LIB_MYSENSORS_OBJS)
 
 # Basic Gateway Build
-$(GATEWAY_BASIC): bin $(GATEWAY_BASIC_OBJECTS) $(MYSENSORS_LIB)
+$(GATEWAY_BASIC): $(GATEWAY_BASIC_OBJECTS) $(MYSENSORS_LIB)
 	$(CC) -o $@ $(GATEWAY_BASIC_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm
 
 # Serial Gateway Build
 $(GATEWAY_SERIAL): CCFLAGS += -D_TTY_NAME=\"${TTY_NAME}\" -D_TTY_GROUPNAME=\"${TTY_GROUPNAME}\"
-$(GATEWAY_SERIAL): bin $(GATEWAY_SERIAL_OBJECTS) $(MYSENSORS_LIB)
+$(GATEWAY_SERIAL): $(GATEWAY_SERIAL_OBJECTS) $(MYSENSORS_LIB)
 	$(CC) -o $@ $(GATEWAY_SERIAL_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm -lutil -pthread
 
 # Ethernet Gateway Build
 $(GATEWAY_ETHERNET): CCFLAGS += -std=c++0x
-$(GATEWAY_ETHERNET): bin $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB)
+$(GATEWAY_ETHERNET): $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB)
 	$(CC) -o $@ $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm -pthread
 
 build:
 	@mkdir -p build
-
-bin:
-	@mkdir -p bin
 
 # Include all .d files
 -include $(DEPS)
@@ -89,7 +93,7 @@ bin:
 
 # The Cleaner
 clean:
-	rm -rf build $(LIB_MYSENSORS_OBJS) $(GATEWAY_BASIC_OBJECTS) $(GATEWAY_SERIAL_OBJECTS) $(GATEWAY_ETHERNET_OBJECTS) $(DEPS)
+	rm -rf build $(LIB_MYSENSORS_OBJS) $(GATEWAY_BASIC_OBJECTS) $(GATEWAY_SERIAL_OBJECTS) $(GATEWAY_ETHERNET_OBJECTS) $(GATEWAY_BASIC) $(GATEWAY_SERIAL) $(GATEWAY_ETHERNET) $(DEPS)
 
 install: all install-gatewaybasic install-gatewayserial install-gatewayethernet install-initscripts
 
