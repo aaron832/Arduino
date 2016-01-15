@@ -20,7 +20,7 @@ ARCH=armv7-a
 endif
 
 # The recommended compiler flags for the Raspberry Pi
-CCFLAGS=-Ofast -mfpu=vfp -mfloat-abi=hard -march=$(ARCH) -mtune=arm1176jzf-s -DRASPBERRYPI_ARCH $(OPTFLAGS)
+CCFLAGS=-Ofast -mfpu=vfp -mfloat-abi=hard -march=$(ARCH) -mtune=arm1176jzf-s -pthread -DRASPBERRYPI_ARCH $(OPTFLAGS)
 #CCFLAGS+=-g -Wall -Wextra
 
 # get PI Revision from cpuinfo
@@ -75,12 +75,12 @@ $(GATEWAY_BASIC): $(GATEWAY_BASIC_OBJECTS) $(MYSENSORS_LIB)
 # Serial Gateway Build
 $(GATEWAY_SERIAL): CCFLAGS += -D_TTY_NAME=\"${TTY_NAME}\" -D_TTY_GROUPNAME=\"${TTY_GROUPNAME}\"
 $(GATEWAY_SERIAL): $(GATEWAY_SERIAL_OBJECTS) $(MYSENSORS_LIB)
-	$(CC) -o $@ $(GATEWAY_SERIAL_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm -lutil -pthread
+	$(CC) -o $@ $(GATEWAY_SERIAL_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm -lutil
 
 # Ethernet Gateway Build
 $(GATEWAY_ETHERNET): CCFLAGS += -std=c++0x
 $(GATEWAY_ETHERNET): $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB)
-	$(CC) -o $@ $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm -pthread
+	$(CC) -o $@ $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm
 
 build:
 	@mkdir -p build

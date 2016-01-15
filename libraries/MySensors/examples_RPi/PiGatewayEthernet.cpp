@@ -50,7 +50,7 @@
 //     The BCM column is the right column to look at.
 #define INTERRUPT_PIN 23
 
-#define CONTROLLER_PORT "5003"  // the port controllers will be connecting to
+#define CONTROLLERS_PORT "5003"  // the port controllers will be connecting to
 #define BACKLOG 10     // how many pending connections queue will hold
 #define MAXDATASIZE 100 // max number of bytes we can get at once
 
@@ -66,21 +66,20 @@ void *waiting_controllers(void *);
 void *connected_controller(void* thread_arg);
 void parse_and_send(long int sockfd, char *buffer);
 
-MySensor *gw;
+static MySensor *gw;
 // NRFRF24L01 radio driver
 #ifdef __PI_BPLUS
 	static MyTransportNRF24 transport(RPI_BPLUS_GPIO_J8_22, RPI_BPLUS_GPIO_J8_24, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
 #else
 	static MyTransportNRF24 transport(RPI_V2_GPIO_P1_22, BCM2835_SPI_CS0, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
 #endif
-MyParserSerial parser;
+static MyParserSerial parser;
 
 static std::vector<int> controllers_sockets;
-static std::list<MyMessage> send_messages_q;
-static std::list<struct radio_message > radio_messages_q;
-static pthread_mutex_t send_messages_mutex = PTHREAD_MUTEX_INITIALIZER;
+static std::list<struct radio_message> radio_messages_q;
 static pthread_mutex_t controllers_sockets_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t radio_messages_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t radio_messages_cond = PTHREAD_COND_INITIALIZER;
 
 volatile static int running = 1;
 
@@ -104,6 +103,7 @@ void intHandler()
 		r_msg.len = transport.receive((uint8_t *)&r_msg.msg);
 		pthread_mutex_lock(&radio_messages_mutex);
 		radio_messages_q.push_back(r_msg);
+		pthread_cond_signal(&radio_messages_cond);
 		pthread_mutex_unlock(&radio_messages_mutex);
 	}
 }
@@ -152,40 +152,30 @@ int main()
 
 #ifdef USE_INTERRUPT
 	attachInterrupt(INTERRUPT_PIN, INT_EDGE_FALLING, intHandler);
-#endif
 
+	pthread_mutex_lock(&radio_messages_mutex);
 	while(running) {
 		/* process radio msgs */
-#ifdef USE_INTERRUPT
-		if (pthread_mutex_trylock(&radio_messages_mutex) == 0) {
-			while (!radio_messages_q.empty()) {
-				struct radio_message r_msg = radio_messages_q.front();
-				radio_messages_q.pop_front();
-
-				MyMessage &message = gw->getLastMessage();
-				message = r_msg.msg;
-				gw->process(r_msg.to);
-			}
-			pthread_mutex_unlock(&radio_messages_mutex);
+		while (radio_messages_q.empty()) {
+			pthread_cond_wait(&radio_messages_cond, &radio_messages_mutex);
 		}
+		struct radio_message r_msg = radio_messages_q.front();
+		radio_messages_q.pop_front();
+
+		MyMessage &message = gw->getLastMessage();
+		message = r_msg.msg;
+		gw->process(r_msg.to);
+	}
+	pthread_mutex_unlock(&radio_messages_mutex);
+
+	detachInterrupt(INTERRUPT_PIN);
 #else
+	while(running) {
+		/* process radio msgs */
 		gw->process();
-#endif
-
-		pthread_mutex_lock(&send_messages_mutex);
-		while (!send_messages_q.empty()) {
-			MyMessage msg = send_messages_q.back();
-			send_messages_q.pop_back();
-			
-			gw->sendRoute(msg);
-		}
-		pthread_mutex_unlock(&send_messages_mutex);
-
+		
 		usleep(10000);	// 10ms
 	}
-
-#ifdef USE_INTERRUPT
-	detachInterrupt(INTERRUPT_PIN);
 #endif
 
 	return 0;
@@ -244,7 +234,7 @@ void *waiting_controllers(void *)
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_flags = AI_PASSIVE; // use my IP
 
-	if ((rv = getaddrinfo(NULL, CONTROLLER_PORT, &hints, &servinfo)) != 0) {
+	if ((rv = getaddrinfo(NULL, CONTROLLERS_PORT, &hints, &servinfo)) != 0) {
 		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
 		return NULL;
 	}
@@ -284,7 +274,7 @@ void *waiting_controllers(void *)
 		exit(1);
 	}
 
-	printf("server: waiting for connections...\n");
+	printf("server: waiting for connections from controllers...\n");
 
 	while (1) {  // accept() loop
 		sin_size = sizeof their_addr;
@@ -365,9 +355,7 @@ void parse_and_send(long int sockfd, char *buffer)
 					perror("send");
 			}
 		} else {
-			pthread_mutex_lock(&send_messages_mutex);
-			send_messages_q.push_back(msg);
-			pthread_mutex_unlock(&send_messages_mutex);
+			gw->sendRoute(msg);
 		}
 	}
 }

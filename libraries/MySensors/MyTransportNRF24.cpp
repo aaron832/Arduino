@@ -20,6 +20,12 @@
 #include "MyTransport.h"
 #include "MyTransportNRF24.h"
 
+#ifdef RF24_RPi
+#include <pthread.h>
+
+static pthread_mutex_t rf24Mutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
 MyTransportNRF24::MyTransportNRF24(uint8_t ce, uint8_t cs, uint8_t paLevel)
 	:
 	MyTransport(),
@@ -61,10 +67,16 @@ bool MyTransportNRF24::init() {
 }
 
 void MyTransportNRF24::setAddress(uint8_t address) {
+#ifdef RF24_RPi
+	pthread_mutex_lock(&rf24Mutex);
+#endif
 	_address = address;
 	rf24.openReadingPipe(WRITE_PIPE, TO_ADDR(address));
 	rf24.openReadingPipe(CURRENT_NODE_PIPE, TO_ADDR(address));
 	rf24.startListening();
+#ifdef RF24_RPi
+	pthread_mutex_unlock(&rf24Mutex);
+#endif
 }
 
 uint8_t MyTransportNRF24::getAddress() {
@@ -72,16 +84,25 @@ uint8_t MyTransportNRF24::getAddress() {
 }
 
 bool MyTransportNRF24::send(uint8_t to, const void* data, uint8_t len) {
+#ifdef RF24_RPi
+	pthread_mutex_lock(&rf24Mutex);
+#endif
 	// Make sure radio has powered up
 	rf24.powerUp();
 	rf24.stopListening();
 	rf24.openWritingPipe(TO_ADDR(to));
 	bool ok = rf24.write(data, len, to == BROADCAST_ADDRESS);
 	rf24.startListening();
+#ifdef RF24_RPi
+	pthread_mutex_unlock(&rf24Mutex);
+#endif
 	return ok;
 }
 
 bool MyTransportNRF24::available(uint8_t *to) {
+#ifdef RF24_RPi
+	pthread_mutex_lock(&rf24Mutex);
+#endif
 	uint8_t pipe = 255;
 	boolean avail = rf24.available(&pipe);
 	(void)avail; //until somebody makes use of 'avail'
@@ -89,12 +110,22 @@ bool MyTransportNRF24::available(uint8_t *to) {
 		*to = _address;
 	else if (pipe == BROADCAST_PIPE)
 		*to = BROADCAST_ADDRESS;
-	return (rf24.available() && pipe < 6);
+	bool rc = rf24.available();
+#ifdef RF24_RPi
+	pthread_mutex_unlock(&rf24Mutex);
+#endif
+	return (rc && pipe < 6);
 }
 
 uint8_t MyTransportNRF24::receive(void* data) {
+#ifdef RF24_RPi
+	pthread_mutex_lock(&rf24Mutex);
+#endif
 	uint8_t len = rf24.getDynamicPayloadSize();
 	rf24.read(data, len);
+#ifdef RF24_RPi
+	pthread_mutex_unlock(&rf24Mutex);
+#endif
 	return len;
 }
 
