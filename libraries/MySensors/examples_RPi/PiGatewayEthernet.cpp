@@ -90,6 +90,7 @@ void handle_sigint(int sig)
 {
 	running = 0;
 	std::cout << "Received SIGINT\n" << std::endl;
+	pthread_cond_signal(&radio_messages_cond);
 }
 
 void intHandler()
@@ -98,14 +99,14 @@ void intHandler()
 	
 	//Read as long data is available
 	//Single interrupts may be lost if a lot of data comes in.
+	pthread_mutex_lock(&radio_messages_mutex);
 	while (transport.available(&r_msg.to)) {
 		memset(&r_msg.msg, 0, sizeof(MyMessage));
 		r_msg.len = transport.receive((uint8_t *)&r_msg.msg);
-		pthread_mutex_lock(&radio_messages_mutex);
 		radio_messages_q.push_back(r_msg);
-		pthread_cond_signal(&radio_messages_cond);
-		pthread_mutex_unlock(&radio_messages_mutex);
 	}
+	pthread_mutex_unlock(&radio_messages_mutex);
+	pthread_cond_signal(&radio_messages_cond);
 }
 
 int main()
@@ -150,32 +151,37 @@ int main()
 	pthread_create(&thread_id, &attr, &waiting_controllers, NULL);
 	pthread_attr_destroy(&attr);
 
-#ifdef USE_INTERRUPT
-	attachInterrupt(INTERRUPT_PIN, INT_EDGE_FALLING, intHandler);
-
-	pthread_mutex_lock(&radio_messages_mutex);
-	while(running) {
-		/* process radio msgs */
-		while (radio_messages_q.empty()) {
-			pthread_cond_wait(&radio_messages_cond, &radio_messages_mutex);
-		}
-		struct radio_message r_msg = radio_messages_q.front();
-		radio_messages_q.pop_front();
-
-		MyMessage &message = gw->getLastMessage();
-		message = r_msg.msg;
-		gw->process(r_msg.to);
-	}
-	pthread_mutex_unlock(&radio_messages_mutex);
-
-	detachInterrupt(INTERRUPT_PIN);
-#else
+#ifndef USE_INTERRUPT
 	while(running) {
 		/* process radio msgs */
 		gw->process();
 		
 		usleep(10000);	// 10ms
 	}
+#else
+	attachInterrupt(INTERRUPT_PIN, INT_EDGE_FALLING, intHandler);
+
+	while(running) {
+		/* process radio msgs */
+		pthread_mutex_lock(&radio_messages_mutex);
+		while (radio_messages_q.empty()) {
+			pthread_cond_wait(&radio_messages_cond, &radio_messages_mutex);
+			if (!running) {
+				pthread_mutex_unlock(&radio_messages_mutex);
+				goto end;
+			}
+		}
+		struct radio_message r_msg = radio_messages_q.front();
+		radio_messages_q.pop_front();
+		pthread_mutex_unlock(&radio_messages_mutex);
+		delay(1);
+
+		MyMessage &message = gw->getLastMessage();
+		message = r_msg.msg;
+		gw->process(r_msg.to);
+	}
+end:
+	detachInterrupt(INTERRUPT_PIN);
 #endif
 
 	return 0;
