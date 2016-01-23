@@ -159,6 +159,9 @@ int main()
 		usleep(10000);	// 10ms
 	}
 #else
+	// Mask all interrupts except the receive interrupt
+	transport.maskIRQ(1,1,0);
+
 	attachInterrupt(INTERRUPT_PIN, INT_EDGE_FALLING, intHandler);
 
 	while(running) {

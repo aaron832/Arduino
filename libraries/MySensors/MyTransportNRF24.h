@@ -52,6 +52,7 @@ public:
 	bool available(uint8_t *to);
 	uint8_t receive(void* data);
 	void powerDown();
+	void maskIRQ(bool tx_ok, bool tx_fail, bool rx_ready);
 private:
 	RF24 rf24;
 	uint8_t _address;

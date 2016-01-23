@@ -132,3 +132,7 @@ uint8_t MyTransportNRF24::receive(void* data) {
 void MyTransportNRF24::powerDown() {
 	rf24.powerDown();
 }
+
+void MyTransportNRF24::maskIRQ(bool tx, bool fail, bool rx) {
+	rf24.maskIRQ(tx, fail, rx);
+}
