@@ -37,24 +37,54 @@
 #include <SPI.h>
 #include <MySensor.h>  
 #include <DHT.h>  
+#include <Bounce2.h>
 
+//Children message IDs
 #define CHILD_ID_HUM 0
 #define CHILD_ID_TEMP 1
+#define CHILD_ID_BAYDOORSENSOR 2
+#define CHILD_ID_DOORSENSOR 3
+
+//Arduino pins
 #define HUMIDITY_SENSOR_DIGITAL_PIN 3
-unsigned long SLEEP_TIME = 30000; // Sleep time between reads (in milliseconds)
+#define BAYDOORSENSOR_PIN 4
+#define DOORSENSOR_PIN 5
+
+unsigned long SLEEP_TIME = 1000; // Sleep time between reads (in milliseconds)
 
 DHT dht;
 float lastTemp;
 float lastHum;
-boolean metric = true; 
+boolean metric = false; 
 MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
+MyMessage msgBayDoor(CHILD_ID_BAYDOORSENSOR, V_TRIPPED);
+MyMessage msgDoor(CHILD_ID_DOORSENSOR, V_TRIPPED);
+
+//Not really necessary as we are only checking every SLEEP_TIME of 1 second.
+Bounce debouncerBayDoor = Bounce();
+Bounce debouncerDoor = Bounce();
+int bayDoorState=-1;
+int doorState=-1;
 
 void setup()  
 {
+  //Temp Humid sensor setup
   dht.setup(HUMIDITY_SENSOR_DIGITAL_PIN); 
 
-  metric = getConfig().isMetric;
+  //Supposed to be configurable from server.  Whatever.
+  //metric = getConfig().isMetric;
+  
+  // Setup the button
+  pinMode(BAYDOORSENSOR_PIN,INPUT);
+  pinMode(DOORSENSOR_PIN,INPUT);
+  // Activate internal pull-up
+  digitalWrite(BAYDOORSENSOR_PIN,HIGH);
+  digitalWrite(DOORSENSOR_PIN,HIGH);
+    
+  // After setting up the button, setup debouncer
+  debouncerBayDoor.attach(BAYDOORSENSOR_PIN);
+  debouncerDoor.attach(DOORSENSOR_PIN);
 }
 
 void presentation()  
@@ -99,6 +129,25 @@ void loop()
       Serial.print("H: ");
       Serial.println(humidity);
       #endif
+  }
+  
+  //Check the door sensors.
+  debouncerBayDoor.update();
+  debouncerDoor.update();
+  
+  int value = 0;
+  value = debouncerBayDoor.read();
+  if (value != bayDoorState) {
+     // Send in the new value
+     send(msgBayDoor.set(value==HIGH ? 1 : 0));
+     bayDoorState = value;
+  }
+  
+  value = debouncerDoor.read();
+  if (value != doorState) {
+     // Send in the new value
+     send(msgDoor.set(value==HIGH ? 1 : 0));
+     doorState = value;
   }
   
   sleep(SLEEP_TIME); //sleep a bit
