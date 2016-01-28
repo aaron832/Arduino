@@ -318,31 +318,32 @@ void *connected_controller(void* thread_arg)
 	int nbytes;
 
 	while (1) {
-		if ((nbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-			perror("recv");
-
-			pthread_mutex_lock(&controllers_sockets_mutex);
-			auto it = std::find(controllers_sockets.begin(), controllers_sockets.end(), sockfd);
-			if (it != controllers_sockets.end()) {
-				// use swap to prevent moving all elements
-				std::swap(*it, controllers_sockets.back());
-				controllers_sockets.pop_back();
+		if ((nbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) > 0) {
+			for (int i = 0; i < nbytes; i++) {
+				if (buf[i] == '\n') {
+					buf[i] = '\0';
+					parse_and_send(sockfd, buf);
+					break;
+				}
 			}
-			pthread_mutex_unlock(&controllers_sockets_mutex);
-
-			close(sockfd);
-			return NULL;
-		}
-
-		for (int i = 0; i < nbytes; i++) {
-			if (buf[i] == '\n') {
-				buf[i] = '\0';
-				parse_and_send(sockfd, buf);
-				break;
-			}
+		} else {
+			break;
 		}
 	}
+	
+	if (nbytes == -1)
+		perror("recv");
 
+	pthread_mutex_lock(&controllers_sockets_mutex);
+	auto it = std::find(controllers_sockets.begin(), controllers_sockets.end(), sockfd);
+	if (it != controllers_sockets.end()) {
+		// use swap to prevent moving all elements
+		std::swap(*it, controllers_sockets.back());
+		controllers_sockets.pop_back();
+	}
+	pthread_mutex_unlock(&controllers_sockets_mutex);
+
+	close(sockfd);
 	return NULL;
 }
 
