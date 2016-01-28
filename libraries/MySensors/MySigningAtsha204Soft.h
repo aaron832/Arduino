@@ -60,7 +60,7 @@ public:
 		, uint8_t nof_whitelist_entries=0, const whitelist_entry_t* the_whitelist=NULL,
 		const uint8_t* the_serial=NULL //SHA204_SERIAL_SZ sized buffer expected if provided
 #endif
-#if defined(ARDUINO_ARCH_AVR)
+#ifndef RASPBERRYPI_ARCH
 		, uint8_t randomseedPin=MY_RANDOMSEED_PIN
 #endif
 		);
@@ -76,7 +76,7 @@ private:
 	uint8_t current_nonce[NONCE_NUMIN_SIZE_PASSTHROUGH];
 	uint8_t temp_message[32];
 	static uint8_t hmacKey[32];
-#if defined(ARDUINO_ARCH_AVR)
+#ifndef RASPBERRYPI_ARCH
 	uint8_t rndPin;
 #endif
 	uint8_t hmac[32];

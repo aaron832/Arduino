@@ -28,7 +28,7 @@
  *
  */
 
-#if !defined(ARDUINO_ARCH_AVR)
+#ifdef RASPBERRYPI_ARCH
 	#include <time.h>
 	#include <stdlib.h>
 #endif
@@ -75,7 +75,7 @@ MySigningAtsha204Soft::MySigningAtsha204Soft(bool requestSignatures
 	, uint8_t nof_whitelist_entries, const whitelist_entry_t* the_whitelist,
 	const uint8_t* the_serial
 #endif
-#if defined(ARDUINO_ARCH_AVR)
+#ifndef RASPBERRYPI_ARCH
 	, uint8_t randomseedPin
 #endif
 	)
@@ -88,7 +88,7 @@ MySigningAtsha204Soft::MySigningAtsha204Soft(bool requestSignatures
 #endif
 	Sha256(),
 	verification_ongoing(false)
-#if defined(ARDUINO_ARCH_AVR)
+#ifndef RASPBERRYPI_ARCH
 	, rndPin(randomseedPin)
 #endif
 {
@@ -96,17 +96,21 @@ MySigningAtsha204Soft::MySigningAtsha204Soft(bool requestSignatures
 
 bool MySigningAtsha204Soft::getNonce(MyMessage &msg) {
 	// Set randomseed
-#if defined(ARDUINO_ARCH_AVR)
-	randomSeed(analogRead(rndPin));
-#else
+#ifdef RASPBERRYPI_ARCH
 	srand(time(NULL));
+#else
+	randomSeed(analogRead(rndPin));
 #endif
 
 	// We used a basic whitening technique that takes the first byte of a new random value and builds up a 32-byte random value
 	// This 32-byte random value is then hashed (SHA256) to produce the resulting nonce
 	Sha256.init();
 	for (int i = 0; i < 32; i++) {
+#if defined(RASPBERRYPI_ARCH)
 		Sha256.write(random() % 255);
+#else
+		Sha256.write(random(256));
+#endif
 	}
 	memcpy(current_nonce, Sha256.result(), MAX_PAYLOAD);
 
