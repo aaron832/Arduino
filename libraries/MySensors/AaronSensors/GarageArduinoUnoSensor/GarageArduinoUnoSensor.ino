@@ -39,6 +39,9 @@
 #include <DHT.h>  
 #include <Bounce2.h>
 
+#define SHORT_WAIT 50
+#define LONG_WAIT 500
+
 //Children message IDs
 #define CHILD_ID_HUM 0
 #define CHILD_ID_TEMP 1
@@ -90,11 +93,18 @@ void setup()
 void presentation()  
 { 
   // Send the Sketch Version Information to the Gateway
-  sendSketchInfo("Humidity", "1.0");
+  sendSketchInfo("Garage Sensor", "1.0");
+  wait(LONG_WAIT);
 
   // Register all sensors to gw (they will be created as child devices)
-  present(CHILD_ID_HUM, S_HUM);
-  present(CHILD_ID_TEMP, S_TEMP);
+  present(CHILD_ID_HUM, S_HUM, "DHT11 Sensor - Humidity");
+  wait(LONG_WAIT);
+  present(CHILD_ID_TEMP, S_TEMP, "DHT11 Sensor - Temperature");
+  wait(LONG_WAIT);
+  present(CHILD_ID_BAYDOORSENSOR, S_DOOR, "Garage Door magnet sensor");
+  wait(LONG_WAIT);
+  present(CHILD_ID_DOORSENSOR, S_DOOR, "Back Door magnet sensor");
+  wait(LONG_WAIT);
 }
 
 void loop()      
@@ -115,6 +125,7 @@ void loop()
     #ifdef MY_DEBUG
     Serial.print("T: ");
     Serial.println(temperature);
+	wait(SHORT_WAIT);
     #endif
   }
   
@@ -125,6 +136,7 @@ void loop()
   } else if (humidity != lastHum) {
       lastHum = humidity;
       send(msgHum.set(humidity, 1));
+	  wait(SHORT_WAIT);
       #ifdef MY_DEBUG
       Serial.print("H: ");
       Serial.println(humidity);
@@ -140,6 +152,7 @@ void loop()
   if (value != bayDoorState) {
      // Send in the new value
      send(msgBayDoor.set(value==HIGH ? 1 : 0));
+	 wait(SHORT_WAIT);
      bayDoorState = value;
   }
   
@@ -147,6 +160,7 @@ void loop()
   if (value != doorState) {
      // Send in the new value
      send(msgDoor.set(value==HIGH ? 1 : 0));
+	 wait(SHORT_WAIT);
      doorState = value;
   }
   
