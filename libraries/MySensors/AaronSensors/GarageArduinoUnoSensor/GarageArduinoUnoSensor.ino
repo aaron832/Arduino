@@ -41,17 +41,21 @@
 
 #define SHORT_WAIT 50
 #define LONG_WAIT 500
+#define RELAY_ON 1  // GPIO value to write to turn on attached relay
+#define RELAY_OFF 0 // GPIO value to write to turn off attached relay
 
 //Children message IDs
 #define CHILD_ID_HUM 0
 #define CHILD_ID_TEMP 1
 #define CHILD_ID_BAYDOORSENSOR 2
 #define CHILD_ID_DOORSENSOR 3
+#define CHILD_ID_RELAY1 4
 
 //Arduino pins
 #define HUMIDITY_SENSOR_DIGITAL_PIN 3
 #define BAYDOORSENSOR_PIN 4
 #define DOORSENSOR_PIN 5
+#define RELAY1_PIN 6
 
 unsigned long SLEEP_TIME = 1000; // Sleep time between reads (in milliseconds)
 
@@ -63,12 +67,14 @@ MyMessage msgHum(CHILD_ID_HUM, V_HUM);
 MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 MyMessage msgBayDoor(CHILD_ID_BAYDOORSENSOR, V_TRIPPED);
 MyMessage msgDoor(CHILD_ID_DOORSENSOR, V_TRIPPED);
+MyMessage msgBayDoorSwitch(CHILD_ID_RELAY1, V_LIGHT);
 
 //Not really necessary as we are only checking every SLEEP_TIME of 1 second.
 Bounce debouncerBayDoor = Bounce();
 Bounce debouncerDoor = Bounce();
 int bayDoorState=-1;
 int doorState=-1;
+int firstRun=1;
 
 void setup()  
 {
@@ -84,6 +90,10 @@ void setup()
   // Activate internal pull-up
   digitalWrite(BAYDOORSENSOR_PIN,HIGH);
   digitalWrite(DOORSENSOR_PIN,HIGH);
+  
+  //Setup Relays
+  pinMode(RELAY1_PIN, OUTPUT);
+  digitalWrite(RELAY1_PIN, RELAY_OFF);
     
   // After setting up the button, setup debouncer
   debouncerBayDoor.attach(BAYDOORSENSOR_PIN);
@@ -105,12 +115,25 @@ void presentation()
   wait(LONG_WAIT);
   present(CHILD_ID_DOORSENSOR, S_DOOR, "Back Door magnet sensor");
   wait(LONG_WAIT);
+  present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay");
+  wait(LONG_WAIT);
 }
 
 void loop()      
 { 
   Serial.println("Starting...");
   delay(dht.getMinimumSamplingPeriod());
+  
+  if(firstRun)
+  {
+	Serial.println("Setting up subscriptions...");
+	//Clear buttons
+	send(msgBayDoorSwitch.set(0));
+	wait(LONG_WAIT);
+	request(CHILD_ID_RELAY1, V_LIGHT);
+	wait(LONG_WAIT);
+	firstRun = 0;
+  }
  
   // Fetch temperatures from DHT sensor
   float temperature = dht.getTemperature();
@@ -165,4 +188,21 @@ void loop()
   }
   
   sleep(SLEEP_TIME); //sleep a bit
+}
+
+void receive(const MyMessage &message) {
+  // We only expect one type of message from controller. But we better check anyway.
+  if (message.type==V_LIGHT) {
+	if (message.sensor == CHILD_ID_RELAY1) {
+	  // Change relay state
+      digitalWrite(RELAY1_PIN, RELAY_ON);
+	  wait(LONG_WAIT);
+	  digitalWrite(RELAY1_PIN, RELAY_OFF);
+      // Write some debug info
+      Serial.print("Incoming change for sensor:");
+      Serial.print(message.sensor);
+      Serial.print(", New status: ");
+      Serial.println(message.getBool());
+	}
+   } 
 }
