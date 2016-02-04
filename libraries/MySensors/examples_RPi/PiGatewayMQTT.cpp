@@ -39,6 +39,7 @@
 #include <MySensor.h>
 #include <RF24.h>
 
+#include "EnumMap.h"
 #include "mongoose.h"
 
 //#define USE_INTERRUPT
@@ -55,6 +56,7 @@
 #define CONTROLLERS_PORT "5003"  // the port controllers will be connecting to
 #define BACKLOG 10     // how many pending connections queue will hold
 #define MAXDATASIZE 100 // max number of bytes we can get at once
+#define MAXTOPICSIZE 512 // max number of characters in a topic
 
 struct radio_message {
 	MyMessage msg;
@@ -68,11 +70,12 @@ struct mg_mqtt_topic_expression topic_expressions[] = {
 
 void msg_callback(const MyMessage &message);
 void *get_in_addr(struct sockaddr *sa);
-void *waiting_controllers(void *);
-void *connected_controller(void* thread_arg);
-void parse_and_send(long int sockfd, char *buffer);
+void *mongoose_poll(void *);
+void ev_handler(struct mg_connection *nc, int ev, void *p);
 
 static MySensor *gw;
+struct mg_mgr mgr;
+	
 // NRFRF24L01 radio driver
 #ifdef __PI_BPLUS
 	static MyTransportNRF24 transport(RPI_BPLUS_GPIO_J8_22, RPI_BPLUS_GPIO_J8_24, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
@@ -86,6 +89,12 @@ static std::list<struct radio_message> radio_messages_q;
 static pthread_mutex_t controllers_sockets_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t radio_messages_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t radio_messages_cond = PTHREAD_COND_INITIALIZER;
+
+//TODO not sure if this should increment or what to do with it.
+static int message_id = 65;
+
+//TODO static address for now
+const char *address = "localhost:1883";
 
 volatile static int running = 1;
 
@@ -113,6 +122,24 @@ void intHandler()
 	}
 	pthread_mutex_unlock(&radio_messages_mutex);
 	pthread_cond_signal(&radio_messages_cond);
+}
+
+const char * subTypeToStr(int command, int type)
+{
+	switch (command)
+	{
+	case C_PRESENTATION:
+		return mysensor_sensor_str[type];
+	case C_SET:
+	case C_REQ:
+		return mysensor_data_str[type];
+		break;
+	case C_INTERNAL:
+		return mysensor_internal_str[type];
+		break;
+	default:
+		break;
+	}
 }
 
 int main()
@@ -154,7 +181,7 @@ int main()
 	/* network thread */
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&thread_id, &attr, &waiting_controllers, NULL);
+	pthread_create(&thread_id, &attr, &mongoose_poll, NULL);
 	pthread_attr_destroy(&attr);
 
 #ifndef USE_INTERRUPT
@@ -198,180 +225,94 @@ end:
 
 void msg_callback(const MyMessage &message)
 {
-	char buf[MAXDATASIZE];
+	char topic[MAXTOPICSIZE];
 	char convBuf[MAX_PAYLOAD*2+1];
 	int nbytes;
 
+	message.getString(convBuf);
+
 	printf("[CALLBACK]%d;%d;%d;%d;%d;%s\n", message.sender,
 			message.sensor, mGetCommand(message), mGetAck(message),
-			message.type, message.getString(convBuf));
+			message.type, convBuf);
 
-	nbytes = snprintf(buf, MAXDATASIZE, "%d;%d;%d;%d;%d;%s\n",
-			message.sender, message.sensor, mGetCommand(message),
-			mGetAck(message), message.type, message.getString(convBuf));
+	nbytes = strlen(convBuf);
+
+	//TODO create subTypeToStr function.
+	snprintf(topic, MAXTOPICSIZE, "/mySensors/%d/%d/%s", message.sender, message.sensor, subTypeToStr(mGetCommand(message),message.type));
 
 	pthread_mutex_lock(&controllers_sockets_mutex);
-	for (unsigned int i = 0; i < controllers_sockets.size(); i++) {
-		if (send(controllers_sockets[i], buf, nbytes, 0) == -1)
-			perror("send");
-	}
+	
+	mg_mqtt_publish(mgr.active_connections, topic, message_id, MG_MQTT_QOS(0), convBuf, nbytes);
+	
 	pthread_mutex_unlock(&controllers_sockets_mutex);
 }
 
-// get sockaddr, IPv4 or IPv6:
-void *get_in_addr(struct sockaddr *sa)
+void *mongoose_poll(void *)
 {
-	if (sa->sa_family == AF_INET) {
-		return &(((struct sockaddr_in*)sa)->sin_addr);
-	}
-
-	return &(((struct sockaddr_in6*)sa)->sin6_addr);
-}
-
-void *waiting_controllers(void *)
-{
-	// Code from:
-	//  http://beej.us/guide/bgnet/output/html/singlepage/bgnet.html#simpleserver
-
-	int sockfd;  // listen on sock_fd
-	long int new_fd; // new connection on new_fd
-	struct addrinfo hints, *servinfo, *p;
-	struct sockaddr_storage their_addr; // connector's address information
-	socklen_t sin_size;
-	int yes=1;
-	char s[INET6_ADDRSTRLEN];
-	int rv;
 	pthread_t thread_id;
 	pthread_attr_t attr;
 
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_flags = AI_PASSIVE; // use my IP
+	//Initialize mongoose manager
+        mg_mgr_init(&mgr, NULL);
 
-	if ((rv = getaddrinfo(NULL, CONTROLLERS_PORT, &hints, &servinfo)) != 0) {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return NULL;
-	}
+        if(mg_connect(&mgr, address, ev_handler) == NULL) {
+                printf("mg_connect(%s) failed\n", address);
+                exit(1);
+        }
 
-	// loop through all the results and bind to the first we can
-	for (p = servinfo; p != NULL; p = p->ai_next) {
-		if ((sockfd = socket(p->ai_family, p->ai_socktype,
-			p->ai_protocol)) == -1) {
-			perror("server: socket");
-			continue;
-		}
-
-		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
-			sizeof(int)) == -1) {
-			perror("setsockopt");
-			exit(1);
-		}
-
-		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-			close(sockfd);
-			perror("server: bind");
-			continue;
-		}
-
-		break;
-	}
-
-	freeaddrinfo(servinfo); // all done with this structure
-
-	if (p == NULL)  {
-		fprintf(stderr, "server: failed to bind\n");
-		exit(1);
-	}
-
-	if (listen(sockfd, BACKLOG) == -1) {
-		perror("listen");
-		exit(1);
-	}
-
-	printf("server: waiting for connections from controllers...\n");
-
-	while (1) {  // accept() loop
-		sin_size = sizeof their_addr;
-		new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &sin_size);
-		if (new_fd == -1) {
-			perror("accept");
-			continue;
-		}
-
-		inet_ntop(their_addr.ss_family,
-		get_in_addr((struct sockaddr *)&their_addr),
-				s, sizeof s);
-		printf("server: got connection from %s\n", s);
-
-		pthread_attr_init(&attr);
-		pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-		pthread_create(&thread_id, &attr, &connected_controller, (void *)new_fd);
-		pthread_attr_destroy(&attr);
-
-		pthread_mutex_lock(&controllers_sockets_mutex);
-		controllers_sockets.push_back(new_fd);
-		pthread_mutex_unlock(&controllers_sockets_mutex);
+	while (1) { 
+		mg_mgr_poll(&mgr, 1000);
 	}
 
 	return NULL;
 }
 
-void *connected_controller(void* thread_arg)
-{
-	long int sockfd = (long int) thread_arg;
-	char buf[MAXDATASIZE];
-	int nbytes;
+void ev_handler(struct mg_connection *nc, int ev, void *p) {
+  /*
+  struct mg_mqtt_message *msg = (struct mg_mqtt_message *)p;
+  (void) nc;
 
-	while (1) {
-		if ((nbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) > 0) {
-			for (int i = 0; i < nbytes; i++) {
-				if (buf[i] == '\n') {
-					buf[i] = '\0';
-					parse_and_send(sockfd, buf);
-					break;
-				}
-			}
-		} else {
-			break;
-		}
-	}
-	
-	if (nbytes == -1)
-		perror("recv");
+#if 0
+  if (ev != MG_EV_POLL)
+    printf("USER HANDLER GOT %d\n", ev);
+#endif
 
-	pthread_mutex_lock(&controllers_sockets_mutex);
-	auto it = std::find(controllers_sockets.begin(), controllers_sockets.end(), sockfd);
-	if (it != controllers_sockets.end()) {
-		// use swap to prevent moving all elements
-		std::swap(*it, controllers_sockets.back());
-		controllers_sockets.pop_back();
-	}
-	pthread_mutex_unlock(&controllers_sockets_mutex);
+  switch (ev) {
+    case MG_EV_CONNECT:
+      mg_set_protocol_mqtt(nc);
+      mg_send_mqtt_handshake(nc, "dummy");
+      break;
+    case MG_EV_MQTT_CONNACK:
+      if (msg->connack_ret_code != MG_EV_MQTT_CONNACK_ACCEPTED) {
+        printf("Got mqtt connection error: %d\n", msg->connack_ret_code);
+        exit(1);
+      }
+      printf("Subscribing to '/stuff'\n");
+      mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
+      break;
+    case MG_EV_MQTT_PUBACK:
+      printf("Message publishing acknowledged (msg_id: %d)\n", msg->message_id);
+      break;
+    case MG_EV_MQTT_SUBACK:
+      printf("Subscription acknowledged, forwarding to '/test'\n");
+      break;
+    case MG_EV_MQTT_PUBLISH:
+      {
+#if 0
+        char hex[1024] = {0};
+        mg_hexdump(nc->recv_mbuf.buf, msg->payload.len, hex, sizeof(hex));
+        printf("Got incoming message %s:\n%s", msg->topic, hex);
+#else
+        printf("Got incoming message %s: %.*s\n", msg->topic, (int)msg->payload.len, msg->payload.p);
+#endif
 
-	close(sockfd);
-	return NULL;
-}
-
-void parse_and_send(long int sockfd, char *buffer)
-{
-	char buf[MAXDATASIZE];
-	MyMessage msg;
-	int nbytes;
-
-	if (parser.parse(msg, buffer)) {
-		uint8_t command = mGetCommand(msg);
-
-		if (msg.destination==GATEWAY_ADDRESS && command==C_INTERNAL) {
-			// Handle messages directed to gateway
-			if (msg.type == I_VERSION) {
-				// Request for version
-				nbytes = snprintf(buf, MAXDATASIZE, "0;0;%d;0;%d;%s\n", C_INTERNAL, I_VERSION, LIBRARY_VERSION);
-				if (send(sockfd, buf, nbytes, 0) == -1)
-					perror("send");
-			}
-		} else {
-			gw->sendRoute(msg);
-		}
-	}
+        printf("Forwarding to /test\n");
+        mg_mqtt_publish(nc, "/test", 65, MG_MQTT_QOS(0), msg->payload.p, msg->payload.len);
+      }
+      break;
+    case MG_EV_CLOSE:
+      printf("Connection closed\n");
+      exit(1);
+  }
+  */
 }
