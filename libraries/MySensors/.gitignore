@@ -1,0 +1,8 @@
+**/*.o
+**/*.a
+**/*.d
+examples_RPi/PiGatewayBasic
+examples_RPi/PiGatewayEthernet
+examples_RPi/PiGatewaySerial
+examples_RPi/PiGateWayMQTT
+

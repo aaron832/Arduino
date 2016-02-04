@@ -51,12 +51,17 @@ GATEWAY_ETHERNET_SOURCES=examples_RPi/PiGatewayEthernet.cpp
 GATEWAY_ETHERNET_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_ETHERNET_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_ETHERNET_SOURCES))
 
+GATEWAY_MQTT=examples_RPi/PiGatewayEthernet
+GATEWAY_MQTT_SOURCES=examples_RPi/PiGatewayMQTT.cpp examples_RPi/mongoose.cpp
+GATEWAY_MQTT_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_MQTT_SOURCES))
+DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_MQTT_SOURCES))
+
 RF24H = /usr/local/include/RF24
 CINCLUDE=-I. -I${RF24H}
 
 .PHONY: all build clean install uninstall
 
-all: ${GATEWAY_BASIC} ${GATEWAY_SERIAL} ${GATEWAY_ETHERNET}
+all: ${GATEWAY_BASIC} ${GATEWAY_SERIAL} ${GATEWAY_ETHERNET} ${GATEWAY_MQTT}
 
 # The static Lib Build
 $(MYSENSORS_LIB): CCFLAGS += -fPIC
@@ -82,6 +87,11 @@ $(GATEWAY_ETHERNET): CCFLAGS += -std=c++0x
 $(GATEWAY_ETHERNET): $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB)
 	$(CC) -o $@ $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm
 
+# MQTT Gateway Build
+$(GATEWAY_MQTT): CCFLAGS += -std=c++0x
+$(GATEWAY_MQTT): $(GATEWAY_MQTT_OBJECTS) $(MYSENSORS_LIB)
+	$(CC) -o $@ $(GATEWAY_MQTT_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm
+
 build:
 	@mkdir -p build
 
@@ -93,7 +103,7 @@ build:
 
 # The Cleaner
 clean:
-	rm -rf build $(LIB_MYSENSORS_OBJS) $(GATEWAY_BASIC_OBJECTS) $(GATEWAY_SERIAL_OBJECTS) $(GATEWAY_ETHERNET_OBJECTS) $(GATEWAY_BASIC) $(GATEWAY_SERIAL) $(GATEWAY_ETHERNET) $(DEPS)
+	rm -rf build $(LIB_MYSENSORS_OBJS) $(GATEWAY_BASIC_OBJECTS) $(GATEWAY_SERIAL_OBJECTS) $(GATEWAY_ETHERNET_OBJECTS) $(GATEWAY_MQTT_OBJECTS) $(GATEWAY_BASIC) $(GATEWAY_SERIAL) $(GATEWAY_ETHERNET) $(GATEWAY_MQTT) $(DEPS)
 
 install: all install-gatewaybasic install-gatewayserial install-gatewayethernet install-initscripts
 
