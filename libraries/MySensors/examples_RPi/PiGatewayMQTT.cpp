@@ -22,15 +22,15 @@
 #include <algorithm>
 #include <vector>
 #include <list>
-#include <signal.h>
+//#include <signal.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
-#include <arpa/inet.h>
+//#include <sys/types.h>
+//#include <sys/socket.h>
+//#include <netinet/in.h>
+//#include <netdb.h>
+//#include <arpa/inet.h>
 
 #include <MyTransportNRF24.h>
 #include <MySigningNone.h>
@@ -268,7 +268,6 @@ void *mongoose_poll(void *)
 }
 
 void ev_handler(struct mg_connection *nc, int ev, void *p) {
-  /*
   struct mg_mqtt_message *msg = (struct mg_mqtt_message *)p;
   (void) nc;
 
@@ -287,7 +286,7 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
         printf("Got mqtt connection error: %d\n", msg->connack_ret_code);
         exit(1);
       }
-      printf("Subscribing to '/stuff'\n");
+      printf("Subscribing to topic_expressions\n");
       mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
       break;
     case MG_EV_MQTT_PUBACK:
@@ -298,13 +297,7 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
       break;
     case MG_EV_MQTT_PUBLISH:
       {
-#if 0
-        char hex[1024] = {0};
-        mg_hexdump(nc->recv_mbuf.buf, msg->payload.len, hex, sizeof(hex));
-        printf("Got incoming message %s:\n%s", msg->topic, hex);
-#else
         printf("Got incoming message %s: %.*s\n", msg->topic, (int)msg->payload.len, msg->payload.p);
-#endif
 
         printf("Forwarding to /test\n");
         mg_mqtt_publish(nc, "/test", 65, MG_MQTT_QOS(0), msg->payload.p, msg->payload.len);
@@ -314,5 +307,4 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
       printf("Connection closed\n");
       exit(1);
   }
-  */
 }
