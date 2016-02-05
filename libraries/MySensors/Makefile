@@ -51,7 +51,7 @@ GATEWAY_ETHERNET_SOURCES=examples_RPi/PiGatewayEthernet.cpp
 GATEWAY_ETHERNET_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_ETHERNET_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_ETHERNET_SOURCES))
 
-GATEWAY_MQTT=examples_RPi/PiGatewayEthernet
+GATEWAY_MQTT=examples_RPi/PiGatewayMQTT
 GATEWAY_MQTT_SOURCES=examples_RPi/PiGatewayMQTT.cpp examples_RPi/mongoose.cpp
 GATEWAY_MQTT_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_MQTT_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_MQTT_SOURCES))
