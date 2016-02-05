@@ -64,8 +64,10 @@ struct radio_message {
 	uint8_t len;
 };
 
+//TODO
+//Our Subscriptions - for now just subscribe to everything
 struct mg_mqtt_topic_expression topic_expressions[] = {
-  {"/mySensors", 0}
+  {"/mySensors/*", 0}
 };
 
 void msg_callback(const MyMessage &message);
@@ -287,6 +289,8 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
         exit(1);
       }
       printf("Subscribing to topic_expressions\n");
+      //TODO: I think we should only subscribe to either clients or their presentations.
+      // so ... /mySensors/{Client}  or maybe /mySensors/{Client}/{PresentedSensor#}
       mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
       break;
     case MG_EV_MQTT_PUBACK:
