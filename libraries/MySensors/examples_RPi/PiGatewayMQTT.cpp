@@ -67,13 +67,14 @@ struct radio_message {
 //TODO
 //Our Subscriptions - for now just subscribe to everything
 struct mg_mqtt_topic_expression topic_expressions[] = {
-  {"/mySensors/*", 0}
+  {"/mySensors/105/4/V_STATUS", 0}
 };
 
 void msg_callback(const MyMessage &message);
 void *get_in_addr(struct sockaddr *sa);
 void *mongoose_poll(void *);
 void ev_handler(struct mg_connection *nc, int ev, void *p);
+void parsemqtt_and_send(char *topic, const char *payload);
 
 static MySensor *gw;
 struct mg_mgr mgr;
@@ -270,7 +271,7 @@ void *mongoose_poll(void *)
 }
 
 void ev_handler(struct mg_connection *nc, int ev, void *p) {
-  struct mg_mqtt_message *msg = (struct mg_mqtt_message *)p;
+  struct mg_mqtt_message *mqttmsg = (struct mg_mqtt_message *)p;
   (void) nc;
 
 #if 0
@@ -284,8 +285,8 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
       mg_send_mqtt_handshake(nc, "dummy");
       break;
     case MG_EV_MQTT_CONNACK:
-      if (msg->connack_ret_code != MG_EV_MQTT_CONNACK_ACCEPTED) {
-        printf("Got mqtt connection error: %d\n", msg->connack_ret_code);
+      if (mqttmsg->connack_ret_code != MG_EV_MQTT_CONNACK_ACCEPTED) {
+        printf("Got mqtt connection error: %d\n", mqttmsg->connack_ret_code);
         exit(1);
       }
       printf("Subscribing to topic_expressions\n");
@@ -294,17 +295,21 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
       mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
       break;
     case MG_EV_MQTT_PUBACK:
-      printf("Message publishing acknowledged (msg_id: %d)\n", msg->message_id);
+      printf("Message publishing acknowledged (msg_id: %d)\n", mqttmsg->message_id);
       break;
     case MG_EV_MQTT_SUBACK:
       printf("Subscription acknowledged, forwarding to '/test'\n");
       break;
     case MG_EV_MQTT_PUBLISH:
       {
-        printf("Got incoming message %s: %.*s\n", msg->topic, (int)msg->payload.len, msg->payload.p);
-
-        printf("Forwarding to /test\n");
-        mg_mqtt_publish(nc, "/test", 65, MG_MQTT_QOS(0), msg->payload.p, msg->payload.len);
+        printf("Got incoming message %s: %.*s\n", mqttmsg->topic, (int)mqttmsg->payload.len, mqttmsg->payload.p);
+		// Example Output from above: Got incoming message /mySensors/105/4/V_LIGHT: 1
+		
+		std::string strpayload(mqttmsg->payload.p);
+		strpayload = strpayload.substr(0,(int)mqttmsg->payload.len);
+	
+		parsemqtt_and_send(mqttmsg->topic, strpayload.c_str());
+	
       }
       break;
     case MG_EV_CLOSE:
@@ -312,3 +317,75 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
       exit(1);
   }
 }
+
+void parsemqtt_and_send(char *topic, const char *payload)
+{
+	//Buffer for parsemqtt_and_send.  Do not want to re-create it every time we get a message
+	MyMessage msg;
+	char *str, *p;
+
+	char* topic_copy = strdup(topic);
+	
+// TODO THIS IS ALL BUSTED AND JUST COPIED IN CRAP.  STILL WORKING
+// TODO: Check if we should send ack or not.
+	int i = 0;
+	for (str = strtok_r(topic_copy,"/",&p) ; str && i<4 ; str = strtok_r(NULL,"/",&p))
+	{
+		// Example: /mySensors/105/4/V_LIGHT
+		// 0: mySensors - Broker
+		// 1: 105 - node
+		// 2: 4 - sensor
+		// 3: V_LIGHT - type
+		if (i == 0) {
+			//TODO: Add warning when we receive a message from an unexpected broker prefix.
+			//if (strcmp_P(str,broker)!=0) {  //look for MQTT_BROKER_PREFIX
+			//	return;                 //Message not for us or malformatted!
+			//}
+		} else if (i==1) {
+			printf("Destination parse %s\n", str);
+			msg.destination = atoi(str);    //NodeID
+		} else if (i==2) {
+			msg.sensor = atoi(str);         //SensorID
+		} else if (i==3) {
+			unsigned char match=255;         //SensorType
+			
+			//Support for numeric types
+			if ( atoi(str)!=0 || (str[0]=='0' && str[1] =='\0') ) {
+				match=atoi(str);
+			}
+			
+			//Check through all the data type string attary to find a match.
+			//? Not sure if there is any need to be checking for other types like sensor and internal
+			//? as those don't seem like they should be outside settable thought MQTT.
+			for (uint8_t j=0; match == 255 && j<sizeof(mysensor_data_str)/sizeof(mysensor_data_str[0]); j++) {
+				if (strcmp(str,mysensor_data_str[j])==0) { //compare sensors
+					match=j;
+				}
+			}
+			
+			msg.type = match;
+		}
+		i++;
+	}
+	
+	msg.sender = GATEWAY_ADDRESS;
+	msg.last = GATEWAY_ADDRESS;
+	mSetCommand(msg, C_SET);
+	mSetRequestAck(msg, 0);
+	mSetAck(msg, false);
+	msg.set(payload);
+	
+	if(msg.destination != 0 && msg.sensor != 0 && msg.type != 255)
+	{
+		if(!gw->sendRoute(msg))
+			printf("Message not sent!\n");
+	}	
+	else
+	{
+		printf("Recieved a bad MQTT message: '%s':'%s'\n destination:%i, sensor:%i, type:%i\n", 
+		topic, payload, msg.destination, msg.sensor, msg.type);
+	}
+		
+	free(topic_copy);
+}
+
