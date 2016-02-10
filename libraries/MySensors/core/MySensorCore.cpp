@@ -64,6 +64,9 @@ void _begin() {
 	    hwInit();
 	#endif
 
+	// Call before() in sketch (if it exists)
+	if (before) before();
+
 	debug(PSTR("Starting " MY_NODE_TYPE " (" MY_CAPABILIIES ", " LIBRARY_VERSION ")\n"));
 
 	signerInit();
@@ -123,8 +126,6 @@ void _begin() {
 	#elif defined(MY_RADIO_FEATURE)
 		// Read settings from eeprom
 		hwReadConfigBlock((void*)&_nc, (void*)EEPROM_NODE_ID_ADDRESS, sizeof(NodeConfig));
-		// Read latest received controller configuration from EEPROM
-		hwReadConfigBlock((void*)&_cc, (void*)EEPROM_CONTROLLER_CONFIG_ADDRESS, sizeof(ControllerConfig));
 		#ifdef MY_OTA_FIRMWARE_FEATURE
 			// Read firmware config from EEPROM, i.e. type, version, CRC, blocks
 			hwReadConfigBlock((void*)&_fc, (void*)EEPROM_FIRMWARE_TYPE_ADDRESS, sizeof(NodeFirmwareConfig));
@@ -154,6 +155,31 @@ void _begin() {
 		}
 	#endif
 
+#ifdef MY_NODE_LOCK_FEATURE
+	// Check if node has been locked down
+	if (hwReadConfig(EEPROM_NODE_LOCK_COUNTER) == 0) {
+		// Node is locked, check if unlock pin is asserted, else hang the node
+		pinMode(MY_NODE_UNLOCK_PIN, INPUT_PULLUP);
+		// Make a short delay so we are sure any large external nets are fully pulled
+		unsigned long enter = hwMillis();
+		while (hwMillis() - enter < 2);
+		if (digitalRead(MY_NODE_UNLOCK_PIN) == 0) {
+			// Pin is grounded, reset lock counter
+			hwWriteConfig(EEPROM_NODE_LOCK_COUNTER, MY_NODE_LOCK_COUNTER_MAX);
+			// Disable pullup
+			pinMode(MY_NODE_UNLOCK_PIN, INPUT);
+			debug(PSTR("Node is unlocked.\n"));
+		} else {
+			// Disable pullup
+			pinMode(MY_NODE_UNLOCK_PIN, INPUT);
+			nodeLock("LDB"); //Locked during boot
+		}
+	} else if (hwReadConfig(EEPROM_NODE_LOCK_COUNTER) == 0xFF) {
+		// Reset walue
+		hwWriteConfig(EEPROM_NODE_LOCK_COUNTER, MY_NODE_LOCK_COUNTER_MAX);
+	}
+#endif
+
 	// Call sketch setup
 	if (setup)
 		setup();
@@ -164,6 +190,7 @@ void _begin() {
 	#endif
 	if (presentation)
 		presentation();
+
 	debug(PSTR("Init complete, id=%d, parent=%d, distance=%d\n"), _nc.nodeId, _nc.parentNodeId, _nc.distance);
 }
 
@@ -402,4 +429,22 @@ int8_t smartSleep(uint8_t interrupt1, uint8_t mode1, uint8_t interrupt2, uint8_t
 	return ret;
 }
 
+#ifdef MY_NODE_LOCK_FEATURE
+void nodeLock(const char* str) {
+	// Make sure EEPROM is updated to locked status
+	hwWriteConfig(EEPROM_NODE_LOCK_COUNTER, 0);
+	while (1) {
+		debug(PSTR("Node is locked. Ground pin %d and reset to unlock.\n"), MY_NODE_UNLOCK_PIN);
+		#if defined(MY_GATEWAY_ESP8266)
+			yield();
+		#endif
+		_sendRoute(build(_msg, _nc.nodeId, GATEWAY_ADDRESS, NODE_SENSOR_ID,
+			C_INTERNAL, I_LOCKED, false).set(str));
+		#if defined(MY_RADIO_FEATURE)
+			transportPowerDown();
+		#endif
+		(void)hwSleep((unsigned long)1000*60*30); // Sleep for 30 min before resending LOCKED message
+	}
+}
+#endif
 

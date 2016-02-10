@@ -92,6 +92,7 @@ typedef enum {
 	S_INFO, // LCD text device / Simple information device on controller, V_TEXT
 	S_GAS, // Gas meter, V_FLOW, V_VOLUME
 	S_GPS, // GPS Sensor, V_POSITION
+	S_WATER_QUALITY,// V_TEMP, V_PH, V_ORP, V_EC, V_STATUS 
 } mysensor_sensor;
 
 /// @brief Type of sensor data (for set/req/ack messages)
@@ -153,7 +154,10 @@ typedef enum {
 	V_TEXT, // S_INFO. Text message to display on LCD or controller device
 	V_CUSTOM, 		// Custom messages used for controller/inter node specific commands, preferably using S_CUSTOM device type.
 	V_POSITION,	    // GPS position and altitude. Payload: latitude;longitude;altitude(m). E.g. "55.722526;13.017972;18"
-	V_IR_RECORD         // Record IR codes S_IR for playback
+	V_IR_RECORD,         // Record IR codes S_IR for playback
+	V_PH, // S_WATER_QUALITY, water PH
+    	V_ORP, // S_WATER_QUALITY, water ORP : redox potential in mV
+    	V_EC,// S_WATER_QUALITY, water electric conductivity μS/cm (microSiemens/cm)
 } mysensor_data;
 
 
@@ -166,7 +170,8 @@ typedef enum {
 	I_SIGNING_PRESENTATION, //!< Provides signing related preferences (first byte is preference version)
 	I_NONCE_REQUEST,        //!< Request for a nonce
 	I_NONCE_RESPONSE,       //!< Payload is nonce data
-	I_HEARTBEAT, I_PRESENTATION, I_DISCOVER, I_DISCOVER_RESPONSE, I_HEARTBEAT_RESPONSE
+	I_HEARTBEAT, I_PRESENTATION, I_DISCOVER, I_DISCOVER_RESPONSE, I_HEARTBEAT_RESPONSE,
+	I_LOCKED                //!< Node is locked (reason in string-payload)
 } mysensor_internal;
 
 

@@ -156,7 +156,11 @@ bool gatewayTransportSend(MyMessage &message)
 			ret = _ethernetServer.endPacket();
 		#else
 			EthernetClient client;
-			if (client.connect(_ethernetControllerIP, MY_PORT)) {
+			#if defined(MY_CONTROLLER_URL_ADDRESS)
+				if (client.connect(MY_CONTROLLER_URL_ADDRESS, MY_PORT)) {
+			#else
+				if (client.connect(_ethernetControllerIP, MY_PORT)) {
+			#endif
 				client.write(_ethernetMsg, strlen(_ethernetMsg));
 				client.stop();
 			}
@@ -260,10 +264,16 @@ bool gatewayTransportAvailable()
 
 		if (packet_size) {
 			//debug(PSTR("UDP packet available. Size:%d\n"), packet_size);
-			_ethernetServer.read(inputString[0].string, MY_GATEWAY_MAX_RECEIVE_LENGTH);
-			_w5100_spi_en(false);
-			debug(PSTR("UDP packet received: %s\n"), inputString[0].string);
-			return protocolParse(_ethernetMsg, inputString[0].string);
+			#if defined(MY_GATEWAY_ESP8266)
+				_ethernetServer.read(inputString[0].string, MY_GATEWAY_MAX_RECEIVE_LENGTH);
+				debug(PSTR("UDP packet received: %s\n"), inputString[0].string);
+				return protocolParse(_ethernetMsg, inputString[0].string);
+			#else
+				_ethernetServer.read(inputString.string, MY_GATEWAY_MAX_RECEIVE_LENGTH);
+				_w5100_spi_en(false);
+				debug(PSTR("UDP packet received: %s\n"), inputString.string);
+				return protocolParse(_ethernetMsg, inputString.string);
+			#endif
 		}
 	#else
 		#if defined(MY_GATEWAY_ESP8266)
@@ -284,6 +294,8 @@ bool gatewayTransportAvailable()
 						_w5100_spi_en(false);
 						gatewayTransportSend(buildGw(_msg, I_GATEWAY_READY).set("Gateway startup complete."));
 						_w5100_spi_en(true);
+						if (presentation)
+							presentation();
 					}
 				}
 				bool connected = clients[i].connected();
@@ -314,6 +326,8 @@ bool gatewayTransportAvailable()
 					debug(PSTR("Eth: connect\n"));
 					_w5100_spi_en(false);
 					gatewayTransportSend(buildGw(_msg, I_GATEWAY_READY).set("Gateway startup complete."));
+					if (presentation)
+						presentation();
 				}
 			}
 			if (client) {
