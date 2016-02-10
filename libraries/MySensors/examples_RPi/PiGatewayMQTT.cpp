@@ -22,20 +22,14 @@
 #include <algorithm>
 #include <vector>
 #include <list>
-//#include <signal.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
-//#include <sys/types.h>
-//#include <sys/socket.h>
-//#include <netinet/in.h>
-//#include <netdb.h>
-//#include <arpa/inet.h>
 
 #include <MyTransportNRF24.h>
 #include <MySigningNone.h>
 #include <MySigningAtsha204Soft.h>
-#include <MyParserSerial.h>
+//#include <MyParserSerial.h>
 #include <MySensor.h>
 #include <RF24.h>
 
@@ -66,9 +60,10 @@ struct radio_message {
 
 //TODO
 //Our Subscriptions - for now just subscribe to everything
-struct mg_mqtt_topic_expression topic_expressions[] = {
-  {"/mySensors/105/4/V_STATUS", 0}
-};
+//struct mg_mqtt_topic_expression topic_expressions[] = {
+	//TOPIC						//QOS
+//  {"/mySensors/105/4/V_STATUS", 0}
+//};
 
 void msg_callback(const MyMessage &message);
 void *get_in_addr(struct sockaddr *sa);
@@ -85,7 +80,6 @@ struct mg_mgr mgr;
 #else
 	static MyTransportNRF24 transport(RPI_V2_GPIO_P1_22, BCM2835_SPI_CS0, RF24_PA_LEVEL_GW, BCM2835_SPI_SPEED_8MHZ);
 #endif
-static MyParserSerial parser;
 
 static std::vector<int> controllers_sockets;
 static std::list<struct radio_message> radio_messages_q;
@@ -234,20 +228,53 @@ void msg_callback(const MyMessage &message)
 
 	message.getString(convBuf);
 
-	printf("[CALLBACK]%d;%d;%d;%d;%d;%s\n", message.sender,
-			message.sensor, mGetCommand(message), mGetAck(message),
-			message.type, convBuf);
+	//printf("[CALLBACK]%d;%d;%d;%d;%d;%s\n", message.sender,
+	//		message.sensor, mGetCommand(message), mGetAck(message),
+	//		message.type, convBuf);
 
 	nbytes = strlen(convBuf);
 
-	//TODO create subTypeToStr function.
+	//Build the MQTT topic from the mysensor message.
 	snprintf(topic, MAXTOPICSIZE, "/mySensors/%d/%d/%s", message.sender, message.sensor, subTypeToStr(mGetCommand(message),message.type));
-
-	pthread_mutex_lock(&controllers_sockets_mutex);
 	
-	mg_mqtt_publish(mgr.active_connections, topic, message_id, MG_MQTT_QOS(0), convBuf, nbytes);
-	
-	pthread_mutex_unlock(&controllers_sockets_mutex);
+	uint8_t command = mGetCommand(message);
+	if(command == C_PRESENTATION)
+	{
+		//Throw the presentations at MQTT
+		pthread_mutex_lock(&controllers_sockets_mutex);
+		printf("Publish from C_PRESENTATION: %s:%s\n", topic, convBuf);
+		mg_mqtt_publish(mgr.active_connections, topic, message_id, MG_MQTT_QOS(0), convBuf, nbytes);
+		pthread_mutex_unlock(&controllers_sockets_mutex);
+	}
+	else if(command == C_SET)
+	{
+		//We got a request
+		pthread_mutex_lock(&controllers_sockets_mutex);
+		printf("Publish from C_SET: %s:%s\n", topic, convBuf);
+		mg_mqtt_publish(mgr.active_connections, topic, message_id, MG_MQTT_QOS(0), convBuf, nbytes);
+		pthread_mutex_unlock(&controllers_sockets_mutex);
+	}
+	else if (command == C_REQ)
+	{
+		//We got a request... we should just treat this as a subscribe which will automatically trigger a response
+		//What if we subscribe twice?
+		//Doing it this way forces the sensor to first request before receiving anything.
+		//If we do not remember our subscriptions then nodes will either need to remind the gateway periodically or be rebooted.
+		struct mg_mqtt_topic_expression topic_expressions[] = {
+			//TOPIC	//QOS
+			{topic, 0}
+		};
+		pthread_mutex_lock(&controllers_sockets_mutex);
+		printf("Subscribe from C_REQ: %s\n", topic);
+		mg_mqtt_subscribe(mgr.active_connections, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
+		pthread_mutex_unlock(&controllers_sockets_mutex);
+	}
+	else if (command == C_INTERNAL)	{	
+	/* nothing to do here */
+	}
+	else if (command == C_STREAM)	{
+	/* nothing to do here */
+	}
 }
 
 void *mongoose_poll(void *)
@@ -256,12 +283,12 @@ void *mongoose_poll(void *)
 	pthread_attr_t attr;
 
 	//Initialize mongoose manager
-        mg_mgr_init(&mgr, NULL);
+	mg_mgr_init(&mgr, NULL);
 
-        if(mg_connect(&mgr, address, ev_handler) == NULL) {
-                printf("mg_connect(%s) failed\n", address);
-                exit(1);
-        }
+	if(mg_connect(&mgr, address, ev_handler) == NULL) {
+	printf("mg_connect(%s) failed\n", address);
+		exit(1);
+	}
 
 	while (1) { 
 		mg_mgr_poll(&mgr, 1000);
@@ -289,21 +316,20 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
         printf("Got mqtt connection error: %d\n", mqttmsg->connack_ret_code);
         exit(1);
       }
-      printf("Subscribing to topic_expressions\n");
+      printf("Subscribing to NOTHING YET!\n");
       //TODO: I think we should only subscribe to either clients or their presentations.
       // so ... /mySensors/{Client}  or maybe /mySensors/{Client}/{PresentedSensor#}
-      mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
+      //mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
       break;
     case MG_EV_MQTT_PUBACK:
       printf("Message publishing acknowledged (msg_id: %d)\n", mqttmsg->message_id);
       break;
     case MG_EV_MQTT_SUBACK:
-      printf("Subscription acknowledged, forwarding to '/test'\n");
+      printf("Subscription acknowledged.\n");
       break;
     case MG_EV_MQTT_PUBLISH:
       {
-        printf("Got incoming message %s: %.*s\n", mqttmsg->topic, (int)mqttmsg->payload.len, mqttmsg->payload.p);
-		// Example Output from above: Got incoming message /mySensors/105/4/V_LIGHT: 1
+        printf("Got incoming MQTT publish %s: %.*s\n", mqttmsg->topic, (int)mqttmsg->payload.len, mqttmsg->payload.p);
 		
 		std::string strpayload(mqttmsg->payload.p);
 		strpayload = strpayload.substr(0,(int)mqttmsg->payload.len);
@@ -326,8 +352,8 @@ void parsemqtt_and_send(char *topic, const char *payload)
 
 	char* topic_copy = strdup(topic);
 	
-// TODO THIS IS ALL BUSTED AND JUST COPIED IN CRAP.  STILL WORKING
-// TODO: Check if we should send ack or not.
+
+	// TODO: Check if we should send ack or not.
 	int i = 0;
 	for (str = strtok_r(topic_copy,"/",&p) ; str && i<4 ; str = strtok_r(NULL,"/",&p))
 	{
