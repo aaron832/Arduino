@@ -51,6 +51,7 @@
 #define BACKLOG 10     // how many pending connections queue will hold
 #define MAXDATASIZE 100 // max number of bytes we can get at once
 #define MAXTOPICSIZE 512 // max number of characters in a topic
+#define PING_FREQ_SEC 10 //Ping MQTT every 10 seconds.
 
 struct radio_message {
 	MyMessage msg;
@@ -285,28 +286,41 @@ void *mongoose_poll(void *)
 	//Initialize mongoose manager
 	mg_mgr_init(&mgr, NULL);
 
-	if(mg_connect(&mgr, address, ev_handler) == NULL) {
+	struct mg_connection *my_mg_connection = mg_connect(&mgr, address, ev_handler);
+	if(my_mg_connection == NULL) {
 	printf("mg_connect(%s) failed\n", address);
 		exit(1);
 	}
 
+	double lastping = mg_time();
 	while (1) { 
 		mg_mgr_poll(&mgr, 1000);
+		if(mg_time() > lastping + PING_FREQ_SEC)
+		{
+			mg_mqtt_ping(my_mg_connection);
+			lastping = mg_time();
+		}
 	}
 
 	return NULL;
 }
 
 void ev_handler(struct mg_connection *nc, int ev, void *p) {
-  struct mg_mqtt_message *mqttmsg = (struct mg_mqtt_message *)p;
-  (void) nc;
+	struct mg_mqtt_message *mqttmsg = (struct mg_mqtt_message *)p;
+	(void) nc;
 
 #if 0
-  if (ev != MG_EV_POLL)
-    printf("USER HANDLER GOT %d\n", ev);
+	if (ev != MG_EV_POLL)
+		printf("USER HANDLER GOT %d\n", ev);
 #endif
 
   switch (ev) {
+	case MG_EV_POLL:  /* Sent to each connection on each mg_mgr_poll() call */
+		break;
+	case MG_EV_RECV:  /* Data has been received. int *num_bytes */
+		break;
+	case MG_EV_SEND:  /* Data has been written to a socket. int *num_bytes */
+		break;
     case MG_EV_CONNECT:
       mg_set_protocol_mqtt(nc);
       mg_send_mqtt_handshake(nc, "dummy");
@@ -339,8 +353,11 @@ void ev_handler(struct mg_connection *nc, int ev, void *p) {
       }
       break;
     case MG_EV_CLOSE:
-      printf("Connection closed\n");
+      printf("MQTT - Received MG_EV_CLOSE : Connection closed\n");
       exit(1);
+	default:
+	  printf("Unhandled MQTT event... %i could it be a PING REQUEST\n",ev);
+	  break;
   }
 }
 
@@ -403,8 +420,10 @@ void parsemqtt_and_send(char *topic, const char *payload)
 	
 	if(msg.destination != 0 && msg.sensor != 0 && msg.type != 255)
 	{
+		pthread_mutex_lock(&radio_messages_mutex);
 		if(!gw->sendRoute(msg))
 			printf("Message not sent!\n");
+		pthread_mutex_unlock(&radio_messages_mutex);
 	}	
 	else
 	{
