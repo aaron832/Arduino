@@ -238,14 +238,14 @@ void msg_callback(const MyMessage &message)
 		//Throw the presentations at MQTT
 		printf("Publish from C_PRESENTATION: %s:%s\n", topic, convBuf);
 																//true to retain the message (get message immediately after subscribe).
-		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, true); // message_id, MG_MQTT_QOS(0), convBuf, nbytes);
+		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, false); // message_id, MG_MQTT_QOS(0), convBuf, nbytes);
 	}
 	else if(command == C_SET)
 	{
 		//We got a request
 		printf("Publish from C_SET: %s:%s\n", topic, convBuf);
 																//true to retain the message (get message immediately after subscribe).
-		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, true); //message_id, MG_MQTT_QOS(0), convBuf, nbytes);
+		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, false); //message_id, MG_MQTT_QOS(0), convBuf, nbytes);
 	}
 	else if (command == C_REQ)
 	{
