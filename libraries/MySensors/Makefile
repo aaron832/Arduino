@@ -52,7 +52,7 @@ GATEWAY_ETHERNET_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_ETHERNET_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_ETHERNET_SOURCES))
 
 GATEWAY_MQTT=examples_RPi/PiGatewayMQTT
-GATEWAY_MQTT_SOURCES=examples_RPi/PiGatewayMQTT.cpp examples_RPi/mongoose.cpp
+GATEWAY_MQTT_SOURCES=examples_RPi/PiGatewayMQTT.cpp
 GATEWAY_MQTT_OBJECTS=$(patsubst %.cpp,%.o,$(GATEWAY_MQTT_SOURCES))
 DEPS+=$(patsubst %.cpp,%.d,$(GATEWAY_MQTT_SOURCES))
 
@@ -90,7 +90,7 @@ $(GATEWAY_ETHERNET): $(GATEWAY_ETHERNET_OBJECTS) $(MYSENSORS_LIB)
 # MQTT Gateway Build
 $(GATEWAY_MQTT): CCFLAGS += -std=c++0x
 $(GATEWAY_MQTT): $(GATEWAY_MQTT_OBJECTS) $(MYSENSORS_LIB)
-	$(CC) -o $@ $(GATEWAY_MQTT_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm
+	$(CC) -o $@ $(GATEWAY_MQTT_OBJECTS) $(MYSENSORS_LIB) $(CCFLAGS) -lrf24-bcm -lmosquitto
 
 build:
 	@mkdir -p build

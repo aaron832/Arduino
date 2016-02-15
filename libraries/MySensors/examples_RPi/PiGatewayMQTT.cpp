@@ -1,7 +1,8 @@
 /*
- * PiGatewayEthernet.cpp - MySensors Gateway for wireless node providing a network interface
+ * PiGatewayMQTT.cpp - MySensors Gateway for wireless node providing a network MQTT interface
  *
- * Created by Marcelo Aquino <marceloaqno@gmail.com>
+ * Created by: Aaron Rose <https://github.com/aaron832>
+ *			   Marcelo Aquino <marceloaqno@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -22,6 +23,7 @@
 #include <algorithm>
 #include <vector>
 #include <list>
+#include <signal.h>
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
@@ -29,12 +31,10 @@
 #include <MyTransportNRF24.h>
 #include <MySigningNone.h>
 #include <MySigningAtsha204Soft.h>
-//#include <MyParserSerial.h>
 #include <MySensor.h>
 #include <RF24.h>
-
+#include <mosquitto.h>
 #include "EnumMap.h"
-#include "mongoose.h"
 
 //#define USE_INTERRUPT
 // Oitzu (https://github.com/Oitzu) made possible the use of interrupts
@@ -59,21 +59,13 @@ struct radio_message {
 	uint8_t len;
 };
 
-//TODO
-//Our Subscriptions - for now just subscribe to everything
-//struct mg_mqtt_topic_expression topic_expressions[] = {
-	//TOPIC						//QOS
-//  {"/mySensors/105/4/V_STATUS", 0}
-//};
-
 void msg_callback(const MyMessage &message);
 void *get_in_addr(struct sockaddr *sa);
-void *mongoose_poll(void *);
-void ev_handler(struct mg_connection *nc, int ev, void *p);
+void *mqtt_thread(void *);
 void parsemqtt_and_send(char *topic, const char *payload);
 
 static MySensor *gw;
-struct mg_mgr mgr;
+struct mosquitto *mosq;
 	
 // NRFRF24L01 radio driver
 #ifdef __PI_BPLUS
@@ -88,11 +80,13 @@ static pthread_mutex_t controllers_sockets_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t radio_messages_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t radio_messages_cond = PTHREAD_COND_INITIALIZER;
 
-//TODO not sure if this should increment or what to do with it.
+//TODO: not sure if this should increment or what to do with it.
 static int message_id = 65;
 
-//TODO static address for now
-const char *address = "localhost:1883";
+//TODO: static address for now
+const char *mqtthost = "localhost";
+const int mqttport = 1883;
+const int mqttkeepalive = 60;
 
 volatile static int running = 1;
 
@@ -179,7 +173,7 @@ int main()
 	/* network thread */
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&thread_id, &attr, &mongoose_poll, NULL);
+	pthread_create(&thread_id, &attr, &mqtt_thread, NULL);
 	pthread_attr_destroy(&attr);
 
 #ifndef USE_INTERRUPT
@@ -242,18 +236,16 @@ void msg_callback(const MyMessage &message)
 	if(command == C_PRESENTATION)
 	{
 		//Throw the presentations at MQTT
-		pthread_mutex_lock(&controllers_sockets_mutex);
 		printf("Publish from C_PRESENTATION: %s:%s\n", topic, convBuf);
-		mg_mqtt_publish(mgr.active_connections, topic, message_id, MG_MQTT_QOS(0), convBuf, nbytes);
-		pthread_mutex_unlock(&controllers_sockets_mutex);
+																//true to retain the message (get message immediately after subscribe).
+		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, true); // message_id, MG_MQTT_QOS(0), convBuf, nbytes);
 	}
 	else if(command == C_SET)
 	{
 		//We got a request
-		pthread_mutex_lock(&controllers_sockets_mutex);
 		printf("Publish from C_SET: %s:%s\n", topic, convBuf);
-		mg_mqtt_publish(mgr.active_connections, topic, message_id, MG_MQTT_QOS(0), convBuf, nbytes);
-		pthread_mutex_unlock(&controllers_sockets_mutex);
+																//true to retain the message (get message immediately after subscribe).
+		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, true); //message_id, MG_MQTT_QOS(0), convBuf, nbytes);
 	}
 	else if (command == C_REQ)
 	{
@@ -261,104 +253,89 @@ void msg_callback(const MyMessage &message)
 		//What if we subscribe twice?
 		//Doing it this way forces the sensor to first request before receiving anything.
 		//If we do not remember our subscriptions then nodes will either need to remind the gateway periodically or be rebooted.
-		struct mg_mqtt_topic_expression topic_expressions[] = {
-			//TOPIC	//QOS
-			{topic, 0}
-		};
-		pthread_mutex_lock(&controllers_sockets_mutex);
+
 		printf("Subscribe from C_REQ: %s\n", topic);
-		mg_mqtt_subscribe(mgr.active_connections, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
-		pthread_mutex_unlock(&controllers_sockets_mutex);
+		mosquitto_subscribe(mosq, NULL, topic, 0);
 	}
 	else if (command == C_INTERNAL)	{	
-	/* nothing to do here */
 	}
 	else if (command == C_STREAM)	{
-	/* nothing to do here */
 	}
 }
 
-void *mongoose_poll(void *)
+void mqtt_message_callback(struct mosquitto *mosq, void *userdata, const struct mosquitto_message *message)
+{
+	if(message->payloadlen){
+		printf("Got a MQTT message %s %s\n", message->topic, message->payload);
+		
+		std::string strpayload((char *)message->payload);
+		strpayload = strpayload.substr(0,(int)message->payloadlen);
+	
+		parsemqtt_and_send(message->topic, strpayload.c_str());
+	}else{
+		printf("%s (null)\n", message->topic);
+	}
+	fflush(stdout);
+}
+
+void mqtt_connect_callback(struct mosquitto *mosq, void *userdata, int result)
+{
+	int i;
+	if(!result){
+		printf("Connected!\n");
+		/* Subscribe to broker information topics on successful connect. */
+		//mosquitto_subscribe(mosq, NULL, "$SYS/#", 2);
+	}else{
+		fprintf(stderr, "Connect failed\n");
+	}
+}
+
+void mqtt_subscribe_callback(struct mosquitto *mosq, void *userdata, int mid, int qos_count, const int *granted_qos)
+{
+	int i;
+
+	printf("Subscribed (mid: %d): %d", mid, granted_qos[0]);
+	for(i=1; i<qos_count; i++){
+		printf(", %d", granted_qos[i]);
+	}
+	printf("\n");
+}
+
+void mqtt_log_callback(struct mosquitto *mosq, void *userdata, int level, const char *str)
+{
+	/* Pring all log messages regardless of level. */
+	printf("Log: %s\n", str);
+}
+
+void *mqtt_thread(void *)
 {
 	pthread_t thread_id;
 	pthread_attr_t attr;
 
-	//Initialize mongoose manager
-	mg_mgr_init(&mgr, NULL);
-
-	struct mg_connection *my_mg_connection = mg_connect(&mgr, address, ev_handler);
-	if(my_mg_connection == NULL) {
-	printf("mg_connect(%s) failed\n", address);
+	mosquitto_lib_init();
+	bool clean_session = true; //will clean out subscriptions  on disconnect
+	mosq = mosquitto_new(NULL, clean_session, NULL);
+	if(!mosq){
+		fprintf(stderr, "Error: Out of memory.\n");
 		exit(1);
 	}
 
-	double lastping = mg_time();
-	while (1) { 
-		mg_mgr_poll(&mgr, 1000);
-		if(mg_time() > lastping + PING_FREQ_SEC)
-		{
-			mg_mqtt_ping(my_mg_connection);
-			lastping = mg_time();
-		}
+	mosquitto_log_callback_set(mosq, mqtt_log_callback);
+	mosquitto_connect_callback_set(mosq, mqtt_connect_callback);
+	mosquitto_message_callback_set(mosq, mqtt_message_callback);
+	mosquitto_subscribe_callback_set(mosq, mqtt_subscribe_callback);
+
+	if(mosquitto_connect(mosq, mqtthost, mqttport, mqttkeepalive)){
+		fprintf(stderr, "Unable to connect.\n");
+		exit(1);
 	}
 
+	mosquitto_loop_forever(mosq, -1, 1);
+
+	mosquitto_destroy(mosq);
+	mosquitto_lib_cleanup();
+
 	return NULL;
-}
-
-void ev_handler(struct mg_connection *nc, int ev, void *p) {
-	struct mg_mqtt_message *mqttmsg = (struct mg_mqtt_message *)p;
-	(void) nc;
-
-#if 0
-	if (ev != MG_EV_POLL)
-		printf("USER HANDLER GOT %d\n", ev);
-#endif
-
-  switch (ev) {
-	case MG_EV_POLL:  /* Sent to each connection on each mg_mgr_poll() call */
-		break;
-	case MG_EV_RECV:  /* Data has been received. int *num_bytes */
-		break;
-	case MG_EV_SEND:  /* Data has been written to a socket. int *num_bytes */
-		break;
-    case MG_EV_CONNECT:
-      mg_set_protocol_mqtt(nc);
-      mg_send_mqtt_handshake(nc, "dummy");
-      break;
-    case MG_EV_MQTT_CONNACK:
-      if (mqttmsg->connack_ret_code != MG_EV_MQTT_CONNACK_ACCEPTED) {
-        printf("Got mqtt connection error: %d\n", mqttmsg->connack_ret_code);
-        exit(1);
-      }
-      printf("Subscribing to NOTHING YET!\n");
-      //TODO: I think we should only subscribe to either clients or their presentations.
-      // so ... /mySensors/{Client}  or maybe /mySensors/{Client}/{PresentedSensor#}
-      //mg_mqtt_subscribe(nc, topic_expressions, sizeof(topic_expressions)/sizeof(*topic_expressions), 42);
-      break;
-    case MG_EV_MQTT_PUBACK:
-      printf("Message publishing acknowledged (msg_id: %d)\n", mqttmsg->message_id);
-      break;
-    case MG_EV_MQTT_SUBACK:
-      printf("Subscription acknowledged.\n");
-      break;
-    case MG_EV_MQTT_PUBLISH:
-      {
-        printf("Got incoming MQTT publish %s: %.*s\n", mqttmsg->topic, (int)mqttmsg->payload.len, mqttmsg->payload.p);
-		
-		std::string strpayload(mqttmsg->payload.p);
-		strpayload = strpayload.substr(0,(int)mqttmsg->payload.len);
-	
-		parsemqtt_and_send(mqttmsg->topic, strpayload.c_str());
-	
-      }
-      break;
-    case MG_EV_CLOSE:
-      printf("MQTT - Received MG_EV_CLOSE : Connection closed\n");
-      exit(1);
-	default:
-	  printf("Unhandled MQTT event... %i could it be a PING REQUEST\n",ev);
-	  break;
-  }
 }
 
 void parsemqtt_and_send(char *topic, const char *payload)
@@ -420,10 +397,8 @@ void parsemqtt_and_send(char *topic, const char *payload)
 	
 	if(msg.destination != 0 && msg.sensor != 0 && msg.type != 255)
 	{
-		pthread_mutex_lock(&radio_messages_mutex);
 		if(!gw->sendRoute(msg))
 			printf("Message not sent!\n");
-		pthread_mutex_unlock(&radio_messages_mutex);
 	}	
 	else
 	{
