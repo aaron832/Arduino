@@ -57,7 +57,9 @@
 #define DOORSENSOR_PIN 5
 #define RELAY1_PIN 6
 
-unsigned long SLEEP_TIME = 1000; // Sleep time between reads (in milliseconds)
+unsigned long FORCE_REFRESH = 60L*1000L;
+unsigned long DHT_REFRESH = 30L*1000L;
+unsigned long SLEEP_TIME = 1000L; // Sleep time between reads (in milliseconds)
 
 DHT dht;
 float lastTemp;
@@ -75,134 +77,165 @@ Bounce debouncerDoor = Bounce();
 int bayDoorState=-1;
 int doorState=-1;
 int firstRun=1;
+unsigned long time = 0;
+unsigned long dhtRefreshTime = 0;
+unsigned long forceRefreshTime = 0;
+int forceRefresh = 0;
 
 void setup()  
 {
-  //Temp Humid sensor setup
-  dht.setup(HUMIDITY_SENSOR_DIGITAL_PIN); 
+	//Temp Humid sensor setup
+	dht.setup(HUMIDITY_SENSOR_DIGITAL_PIN); 
 
-  //Supposed to be configurable from server.  Whatever.
-  //metric = getConfig().isMetric;
-  
-  // Setup the button
-  pinMode(BAYDOORSENSOR_PIN,INPUT);
-  pinMode(DOORSENSOR_PIN,INPUT);
-  // Activate internal pull-up
-  digitalWrite(BAYDOORSENSOR_PIN,HIGH);
-  digitalWrite(DOORSENSOR_PIN,HIGH);
-  
-  //Setup Relays
-  pinMode(RELAY1_PIN, OUTPUT);
-  digitalWrite(RELAY1_PIN, RELAY_OFF);
-    
-  // After setting up the button, setup debouncer
-  debouncerBayDoor.attach(BAYDOORSENSOR_PIN);
-  debouncerDoor.attach(DOORSENSOR_PIN);
+	//Supposed to be configurable from server.  Whatever.
+	//metric = getConfig().isMetric;
+
+	// Setup the button
+	pinMode(BAYDOORSENSOR_PIN,INPUT);
+	pinMode(DOORSENSOR_PIN,INPUT);
+	// Activate internal pull-up
+	digitalWrite(BAYDOORSENSOR_PIN,HIGH);
+	digitalWrite(DOORSENSOR_PIN,HIGH);
+
+	//Setup Relays
+	pinMode(RELAY1_PIN, OUTPUT);
+	digitalWrite(RELAY1_PIN, RELAY_OFF);
+
+	// After setting up the button, setup debouncer
+	debouncerBayDoor.attach(BAYDOORSENSOR_PIN);
+	debouncerDoor.attach(DOORSENSOR_PIN);
 }
 
 void presentation()  
 { 
-  // Send the Sketch Version Information to the Gateway
-  sendSketchInfo("Garage Sensor", "1.0");
-  wait(LONG_WAIT);
+	// Send the Sketch Version Information to the Gateway
+	sendSketchInfo("Garage Sensor", "1.0");
+	wait(LONG_WAIT);
 
-  // Register all sensors to gw (they will be created as child devices)
-  present(CHILD_ID_HUM, S_HUM, "DHT11 Sensor - Humidity");
-  wait(LONG_WAIT);
-  present(CHILD_ID_TEMP, S_TEMP, "DHT11 Sensor - Temperature");
-  wait(LONG_WAIT);
-  present(CHILD_ID_BAYDOORSENSOR, S_DOOR, "Garage Door magnet sensor");
-  wait(LONG_WAIT);
-  present(CHILD_ID_DOORSENSOR, S_DOOR, "Back Door magnet sensor");
-  wait(LONG_WAIT);
-  present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay");
-  wait(LONG_WAIT);
+	// Register all sensors to gw (they will be created as child devices)
+	present(CHILD_ID_HUM, S_HUM, "DHT11 Sensor - Humidity");
+	wait(LONG_WAIT);
+	present(CHILD_ID_TEMP, S_TEMP, "DHT11 Sensor - Temperature");
+	wait(LONG_WAIT);
+	present(CHILD_ID_BAYDOORSENSOR, S_DOOR, "Garage Door magnet sensor");
+	wait(LONG_WAIT);
+	present(CHILD_ID_DOORSENSOR, S_DOOR, "Back Door magnet sensor");
+	wait(LONG_WAIT);
+	present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay");
+	wait(LONG_WAIT);
 }
 
 void loop()      
 { 
-  Serial.println("Starting...");
-  delay(dht.getMinimumSamplingPeriod());
-  
-  if(firstRun)
-  {
-	Serial.println("Setting up subscriptions...");
-	//Clear buttons
-	send(msgBayDoorSwitch.set(0));
-	wait(LONG_WAIT);
-	request(CHILD_ID_RELAY1, V_LIGHT);
-	wait(LONG_WAIT);
-	firstRun = 0;
-  }
+	//Time and refresh sanity
+	time = millis();
+	if(time < dhtRefreshTime)
+		dhtRefreshTime = time;
+	if(time < forceRefreshTime)
+		forceRefreshTime = time;
+		
+	if(forceRefreshTime + FORCE_REFRESH < time)
+		forceRefresh = 1;
+		
+	//delay(dht.getMinimumSamplingPeriod());
+
+	if(firstRun)
+	{
+		//Clear buttons
+		send(msgBayDoorSwitch.set(0));
+
+		Serial.println("Setting up subscriptions...");
+		wait(LONG_WAIT);
+		request(CHILD_ID_RELAY1, V_LIGHT);
+		wait(LONG_WAIT);
+		firstRun = 0;
+	}
  
-  // Fetch temperatures from DHT sensor
-  float temperature = dht.getTemperature();
-  if (isnan(temperature)) {
-      Serial.println("Failed reading temperature from DHT");
-  } else if (temperature != lastTemp) {
-    lastTemp = temperature;
-    if (!metric) {
-      temperature = dht.toFahrenheit(temperature);
-    }
-    send(msgTemp.set(temperature, 1));
-    #ifdef MY_DEBUG
-    Serial.print("T: ");
-    Serial.println(temperature);
-	wait(SHORT_WAIT);
-    #endif
-  }
+	if(dhtRefreshTime + DHT_REFRESH < time)
+	{
+		// Fetch temperatures from DHT sensor
+		float temperature = dht.getTemperature();
+		if (isnan(temperature)) {
+			Serial.println("Failed reading temperature from DHT");
+		} else if (temperature != lastTemp) {
+			lastTemp = temperature;
+			if (!metric) {
+				temperature = dht.toFahrenheit(temperature);
+			}
+			send(msgTemp.set(temperature, 1));
+			#ifdef MY_DEBUG
+			Serial.print("T: ");
+			Serial.println(temperature);
+			wait(SHORT_WAIT);
+			#endif
+		}
   
-  // Fetch humidity from DHT sensor
-  float humidity = dht.getHumidity();
-  if (isnan(humidity)) {
-      Serial.println("Failed reading humidity from DHT");
-  } else if (humidity != lastHum) {
-      lastHum = humidity;
-      send(msgHum.set(humidity, 1));
-	  wait(SHORT_WAIT);
-      #ifdef MY_DEBUG
-      Serial.print("H: ");
-      Serial.println(humidity);
-      #endif
-  }
+		// Fetch humidity from DHT sensor
+		float humidity = dht.getHumidity();
+		if (isnan(humidity)) {
+			Serial.println("Failed reading humidity from DHT");
+		} else if (humidity != lastHum) {
+			lastHum = humidity;
+			send(msgHum.set(humidity, 1));
+			wait(SHORT_WAIT);
+			#ifdef MY_DEBUG
+			Serial.print("H: ");
+			Serial.println(humidity);
+			#endif
+		}
+		
+		dhtRefreshTime = time;
+	}
   
-  //Check the door sensors.
-  debouncerBayDoor.update();
-  debouncerDoor.update();
-  
-  int value = 0;
-  value = debouncerBayDoor.read();
-  if (value != bayDoorState) {
-     // Send in the new value
-     send(msgBayDoor.set(value==HIGH ? 1 : 0));
-	 wait(SHORT_WAIT);
-     bayDoorState = value;
-  }
-  
-  value = debouncerDoor.read();
-  if (value != doorState) {
-     // Send in the new value
-     send(msgDoor.set(value==HIGH ? 1 : 0));
-	 wait(SHORT_WAIT);
-     doorState = value;
-  }
-  
-  sleep(SLEEP_TIME); //sleep a bit
+	//Check the door sensors.
+	debouncerBayDoor.update();
+	debouncerDoor.update();
+
+	int value = 0;
+	value = debouncerBayDoor.read();
+	if (value != bayDoorState || forceRefresh) {
+		// Send in the new value
+		send(msgBayDoor.set(value==HIGH ? 1 : 0));
+		wait(SHORT_WAIT);
+		bayDoorState = value;
+	}
+
+	value = debouncerDoor.read();
+	if (value != doorState || forceRefresh) {
+		// Send in the new value
+		send(msgDoor.set(value==HIGH ? 1 : 0));
+		wait(SHORT_WAIT);
+		doorState = value;
+	}
+	
+	//Reset force refresh
+	if(forceRefresh)
+	{
+		forceRefreshTime = time;
+		forceRefresh = 0;
+	}
+
+	//This sleep will prevent messages from being received.  Meant for sensors that only send data.
+	//sleep(SLEEP_TIME); //sleep a bit
+	Serial.print(".");
+	delay(SLEEP_TIME);
 }
 
 void receive(const MyMessage &message) {
-  // We only expect one type of message from controller. But we better check anyway.
-  if (message.type==V_LIGHT) {
+	// We only expect one type of message from controller. But we better check anyway.
 	if (message.sensor == CHILD_ID_RELAY1) {
-	  // Change relay state
-      digitalWrite(RELAY1_PIN, RELAY_ON);
-	  wait(LONG_WAIT);
-	  digitalWrite(RELAY1_PIN, RELAY_OFF);
-      // Write some debug info
-      Serial.print("Incoming change for sensor:");
-      Serial.print(message.sensor);
-      Serial.print(", New status: ");
-      Serial.println(message.getBool());
+		if (message.type==V_LIGHT) {
+			if(message.getInt() == 1) {
+				// Turn on the relay briefly.
+				Serial.println("Relay on.");
+				digitalWrite(RELAY1_PIN, RELAY_ON);
+				wait(LONG_WAIT);
+				Serial.println("Relay off.");
+				digitalWrite(RELAY1_PIN, RELAY_OFF);
+				
+				//Reply with turning the value to 0 again.
+				send(msgBayDoorSwitch.set(0));
+			}
+		}
 	}
-   } 
 }
