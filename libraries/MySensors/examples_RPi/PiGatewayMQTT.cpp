@@ -257,7 +257,11 @@ void msg_callback(const MyMessage &message)
 		printf("Subscribe from C_REQ: %s\n", topic);
 		mosquitto_subscribe(mosq, NULL, topic, 0);
 	}
-	else if (command == C_INTERNAL)	{	
+	else if (command == C_INTERNAL)	{
+		//Throw the internal at MQTT
+		printf("Publish from C_INTERNAL: %s:%s\n", topic, convBuf);
+																//true to retain the message (get message immediately after subscribe).
+		mosquitto_publish(mosq, NULL, topic, nbytes, convBuf, 0, false);	
 	}
 	else if (command == C_STREAM)	{
 	}
