@@ -33,7 +33,7 @@
 
 // Enable MY_DEBUG in sketch to show debug prints. This option will add a lot to the size of the
 // final sketch but is helpful to see what is actually is happening during development
-//#define MY_DEBUG
+#define MY_DEBUG
 
 // Enable MY_SPECIAL_DEBUG in sketch to activate I_DEBUG messages if MY_DEBUG is disabled.
 // I_DEBUG requests are:
