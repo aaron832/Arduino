@@ -278,6 +278,11 @@ void transportProcess() {
 
 
 bool transportCheckUplink(bool force) {
+#if defined(MY_PARENT_NODE_IS_STATIC) or defined(MY_REGISTRATION_FEATURE)
+	TRANSPORT_DEBUG(PSTR("TSF:CHKUPL:SKIP\n"));
+	return true;
+#endif
+
 	if (!force && (hwMillis() - _transportSM.lastUplinkCheck) < CHKUPL_INTERVAL) {
 		TRANSPORT_DEBUG(PSTR("TSF:CHKUPL:OK,FCTRL\n"));	// flood control
 		return true;

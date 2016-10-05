@@ -27,16 +27,26 @@
  * http://www.mysensors.org/build/humidity
  */
  
+//In case MySensor network is no longer available.
+//#define STANDALONE_MODE
+ 
 // Enable debug prints
 //#define MY_DEBUG
 
+#ifndef STANDALONE_MODE
 // Enable and select radio type attached
 #define MY_RADIO_NRF24
+#define MY_NODE_ID 10
+#define MY_PARENT_NODE_ID 0
+#define MY_PARENT_NODE_IS_STATIC
+
+//Children message IDs
+#define CHILD_ID_RELAY1 0
 
 #include <SPI.h>
 #include <MySensors.h> 
-//Bounce2 2.2.0
-#include <Bounce2.h>
+#endif
+
 //LedControl 1.0.6
 #include <LedControl.h>
 
@@ -44,9 +54,6 @@
 #define LONG_WAIT 500
 #define RELAY_ON 1  // GPIO value to write to turn on attached relay
 #define RELAY_OFF 0 // GPIO value to write to turn off attached relay
-
-//Children message IDs
-#define CHILD_ID_RELAY1 0
 
 //Arduino pins
 #define BUTTON_PIN 2
@@ -56,18 +63,24 @@ unsigned long SLEEP_TIME = 900000;  // sleep time between reads (seconds * 1000 
 
 MyMessage msgMusicBoxSwitch1(CHILD_ID_RELAY1, V_LIGHT);
 
-Bounce debouncerButton = Bounce();
+static bool activateBox = false;
+void ActivateBox()
+{
+	activateBox = true;
+}
 
-static bool playingBox = false;
 void MusicBoxLogic()
 {
-	if(playingBox)
-		return;
-	playingBox = true;
-	
 	Serial.println("Playing Box...");
-	
-	playingBox = false;
+}
+
+//This doesn't seem to work... at least with using MySensors and not being connected.
+//I know it works without mysensors.  Possible it only works when Mysensor is connected
+//when using mysenesors.
+void ButtonInterrupt()
+{
+	Serial.println("Interrupt...");
+	ActivateBox();
 }
 
 void setup()  
@@ -78,7 +91,8 @@ void setup()
     // Activate internal pull-ups
     digitalWrite(BUTTON_PIN, HIGH);
 	
-	debouncerButton.attach(BUTTON_PIN);
+	//Attach interrupt to the button.
+	attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), ButtonInterrupt, RISING);
 }
 
 void presentation()  
@@ -98,19 +112,29 @@ void loop()
 	
 	Serial.println("Loop...");
 	
-	// Short delay to allow buttons to properly settle
-	sleep(5);
+	//We were sleeping... request the status of our input.
+	request(CHILD_ID_RELAY1, S_LIGHT);
 	
-	debouncerButton.update();
-	value = debouncerButton.read();
-	if (value != lastValue) {
-		lastValue = value;
-		if (value==HIGH) {
-			MusicBoxLogic();
-		}
+	//Wait two seconds for a response.
+	//Might get a button event which hopefully the attached interrupt will get.
+	wait(2000);
+	
+	//If we got the button interrupt, then play the box.
+	if(activateBox)
+	{
+		MusicBoxLogic();
+		activateBox = false;
 	}
 	
+	//This sleep will will cause the radio to power down.
+	//Cant do that if we actually want to be able to sent it commands.
 	sleep(BUTTON_PIN-2, CHANGE, SLEEP_TIME);
+	
+	//This is if we get interrupt during sleep from the button.
+	value = digitalRead(BUTTON_PIN);
+	if (value==HIGH) {
+		MusicBoxLogic();
+	}
 }
 
 void receive(const MyMessage &message) {
@@ -121,7 +145,7 @@ void receive(const MyMessage &message) {
 				// Turn on the relay briefly.
 				Serial.println("We Activated!");
 
-				MusicBoxLogic();
+				ActivateBox();
         
 				//Reply with turning the value to 0 again.
 				send(msgMusicBoxSwitch1.set(0));
