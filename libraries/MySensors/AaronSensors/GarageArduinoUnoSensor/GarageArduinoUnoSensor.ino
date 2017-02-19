@@ -52,6 +52,7 @@
 #define CHILD_ID_BAYDOORSENSOR 2
 #define CHILD_ID_DOORSENSOR 3
 #define CHILD_ID_RELAY1 4
+#define NUM_CHILD_ID 5
 
 //Arduino pins
 #define HUMIDITY_SENSOR_DIGITAL_PIN 3
@@ -63,6 +64,8 @@
 unsigned long FORCE_REFRESH = 60L*1000L;
 unsigned long DHT_REFRESH = 30L*1000L;
 unsigned long SLEEP_TIME = 1000L; // Sleep time between reads (in milliseconds)
+unsigned long BLINK_ONCE = 500L;
+unsigned long BLINK_TWICE = 250L;
 
 DHT dht;
 float lastTemp;
@@ -84,7 +87,8 @@ unsigned long time = 0;
 unsigned long dhtRefreshTime = 0;
 unsigned long forceRefreshTime = 0;
 int forceRefresh = 0;
-bool sendOk = false;
+bool sendOk[NUM_CHILD_ID];
+int blinkIndex = 0;
 
 void setup()  
 {
@@ -149,7 +153,7 @@ void loop()
 	if(firstRun)
 	{
 		//Clear buttons
-		sendOk = send(msgBayDoorSwitch.set(0));
+		send(msgBayDoorSwitch.set(0));
 
 		Serial.println("Setting up subscriptions...");
 		wait(LONG_WAIT);
@@ -164,12 +168,12 @@ void loop()
 		float temperature = dht.getTemperature();
 		if (isnan(temperature)) {
 			Serial.println("Failed reading temperature from DHT");
-		} else if (temperature != lastTemp) {
+		} else// if (temperature != lastTemp) {
 			lastTemp = temperature;
 			if (!metric) {
 				temperature = dht.toFahrenheit(temperature);
 			}
-			sendOk = send(msgTemp.set(temperature, 1));
+			sendOk[CHILD_ID_TEMP] = send(msgTemp.set(temperature, 1));
 			#ifdef MY_DEBUG
 			Serial.print("T: ");
 			Serial.println(temperature);
@@ -181,9 +185,9 @@ void loop()
 		float humidity = dht.getHumidity();
 		if (isnan(humidity)) {
 			Serial.println("Failed reading humidity from DHT");
-		} else if (humidity != lastHum) {
+		} else// if (humidity != lastHum) {
 			lastHum = humidity;
-			sendOk = send(msgHum.set(humidity, 1));
+			sendOk[CHILD_ID_HUM] = send(msgHum.set(humidity, 1));
 			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
 			Serial.print("H: ");
@@ -202,7 +206,7 @@ void loop()
 	value = debouncerBayDoor.read();
 	if (value != bayDoorState || forceRefresh) {
 		// Send in the new value
-		sendOk = send(msgBayDoor.set(value==HIGH ? 1 : 0));
+		sendOk[CHILD_ID_BAYDOORSENSOR] = send(msgBayDoor.set(value==HIGH ? 1 : 0));
 		wait(SHORT_WAIT);
 		bayDoorState = value;
 	}
@@ -210,7 +214,7 @@ void loop()
 	value = debouncerDoor.read();
 	if (value != doorState || forceRefresh) {
 		// Send in the new value
-		sendOk = send(msgDoor.set(value==HIGH ? 1 : 0));
+		sendOk[CHILD_ID_DOORSENSOR] = send(msgDoor.set(value==HIGH ? 1 : 0));
 		wait(SHORT_WAIT);
 		doorState = value;
 	}
@@ -222,11 +226,50 @@ void loop()
 		forceRefresh = 0;
 	}
 
-	digitalWrite(DEBUG_LED_PIN,sendOk ? LOW : HIGH);
-	//This sleep will prevent messages from being received.  Meant for sensors that only send data.
-	//sleep(SLEEP_TIME); //sleep a bit
-	Serial.print(".");
-	delay(SLEEP_TIME);
+	bool allOk = true;
+	for(int i=0; i<NUM_CHILD_ID; i++)
+	{
+		allOk = allOk && sendOk[i];
+	}
+	
+	//Loop through and blink once for OK and twice for !OK
+	if(allOk == false)
+	{
+		if(blinkIndex < NUM_CHILD_ID)
+		{
+			if(sendOk[blinkIndex])
+			{
+				digitalWrite(DEBUG_LED_PIN, HIGH);
+				delay(BLINK_ONCE);
+				digitalWrite(DEBUG_LED_PIN, LOW);
+				delay(BLINK_ONCE);
+			}
+			else
+			{
+				digitalWrite(DEBUG_LED_PIN, HIGH);
+				delay(BLINK_TWICE);
+				digitalWrite(DEBUG_LED_PIN, LOW);
+				delay(BLINK_TWICE);
+				digitalWrite(DEBUG_LED_PIN, HIGH);
+				delay(BLINK_TWICE);
+				digitalWrite(DEBUG_LED_PIN, LOW);
+				delay(BLINK_TWICE);
+			}
+		}
+		
+		blinkIndex++;
+		//Blink for each sensor then wait 4 seconds in off position.
+		if(blinkIndex >= NUM_CHILD_ID + 4)
+			blinkIndex = 0;
+	}
+	else
+	{	
+		//digitalWrite(DEBUG_LED_PIN,sendOk ? LOW : HIGH);
+		//This sleep will prevent messages from being received.  Meant for sensors that only send data.
+		//sleep(SLEEP_TIME); //sleep a bit
+		Serial.print(".");
+		delay(SLEEP_TIME);
+	}
 }
 
 void receive(const MyMessage &message) {
@@ -242,7 +285,7 @@ void receive(const MyMessage &message) {
 				digitalWrite(RELAY1_PIN, RELAY_OFF);
 				
 				//Reply with turning the value to 0 again.
-				sendOk = send(msgBayDoorSwitch.set(0));
+				sendOk[CHILD_ID_RELAY1] = send(msgBayDoorSwitch.set(0));
 			}
 		}
 	}
