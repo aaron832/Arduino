@@ -37,7 +37,7 @@
 //#define MY_RADIO_RFM69
 
 #include <SPI.h>
-#include <MySensor.h>  
+#include <MySensors.h>  
 #include <DHT.h>  
 #include <Bounce2.h>
 
@@ -65,7 +65,7 @@ unsigned long FORCE_REFRESH = 60L*1000L;
 unsigned long DHT_REFRESH = 30L*1000L;
 unsigned long SLEEP_TIME = 1000L; // Sleep time between reads (in milliseconds)
 
-DHT dht;
+DHT dht(HUMIDITY_SENSOR_DIGITAL_PIN,DHT11);
 float lastTemp;
 float lastHum;
 boolean metric = false; 
@@ -90,9 +90,6 @@ bool sendOk = false;
 
 void setup()  
 {
-	//Temp Humid sensor setup
-	dht.setup(HUMIDITY_SENSOR_DIGITAL_PIN); 
-
 	//Supposed to be configurable from server.  Whatever.
 	//metric = getConfig().isMetric;
 
@@ -162,26 +159,26 @@ void loop()
 		firstRun = 0;
 		
 		//Set Status
-		sendOk = send(msgTextStatus.set("Started", 1));
+		sendOk = send(msgTextStatus.set("Started"));
 		wait(SHORT_WAIT);
 	}
  
 	if(dhtRefreshTime + DHT_REFRESH < time)
 	{
 		// Fetch temperatures from DHT sensor
-		float temperature = dht.getTemperature();
+		float temperature = dht.readTemperature();
 		if (isnan(temperature)) {
 			#ifdef MY_DEBUG
 			Serial.println("Failed reading temperature from DHT");
 			#endif
-			sendOk = send(msgTextStatus.set("DHT Fail Temp", 1));
+			sendOk = send(msgTextStatus.set("DHT Fail Temp"));
 			wait(SHORT_WAIT);
 		} else if (temperature != lastTemp) {
 			lastTemp = temperature;
 			if (!metric) {
-				temperature = dht.toFahrenheit(temperature);
+				temperature = dht.convertCtoF(temperature);
 			}
-			sendOk = send(msgTemp.set(temperature, 1));
+			sendOk = send(msgTemp.set(temperature,1));
 			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
 			Serial.print("T: ");
@@ -190,16 +187,16 @@ void loop()
 		}
   
 		// Fetch humidity from DHT sensor
-		float humidity = dht.getHumidity();
+		float humidity = dht.readHumidity();
 		if (isnan(humidity)) {
 			#ifdef MY_DEBUG
 			Serial.println("Failed reading humidity from DHT");
 			#endif
-			sendOk = send(msgTextStatus.set("DHT Fail Humid", 1));
+			sendOk = send(msgTextStatus.set("DHT Fail Humid"));
 			wait(SHORT_WAIT);
 		} else if (humidity != lastHum) {
 			lastHum = humidity;
-			sendOk = send(msgHum.set(humidity, 1));
+			sendOk = send(msgHum.set(humidity,1));
 			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
 			Serial.print("H: ");
