@@ -52,6 +52,7 @@
 #define CHILD_ID_BAYDOORSENSOR 2
 #define CHILD_ID_DOORSENSOR 3
 #define CHILD_ID_RELAY1 4
+#define CHILD_ID_TEXT1 5
 
 //Arduino pins
 #define HUMIDITY_SENSOR_DIGITAL_PIN 3
@@ -73,6 +74,7 @@ MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 MyMessage msgBayDoor(CHILD_ID_BAYDOORSENSOR, V_TRIPPED);
 MyMessage msgDoor(CHILD_ID_DOORSENSOR, V_TRIPPED);
 MyMessage msgBayDoorSwitch(CHILD_ID_RELAY1, V_LIGHT);
+MyMessage msgTextStatus(CHILD_ID_TEXT1, V_TEXT);
 
 //Not really necessary as we are only checking every SLEEP_TIME of 1 second.
 Bounce debouncerBayDoor = Bounce();
@@ -130,6 +132,8 @@ void presentation()
 	wait(LONG_WAIT);
 	present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay");
 	wait(LONG_WAIT);
+	present(CHILD_ID_TEXT1, S_INFO, "Device Status");
+	wait(LONG_WAIT);
 }
 
 void loop()      
@@ -156,6 +160,10 @@ void loop()
 		request(CHILD_ID_RELAY1, V_LIGHT);
 		wait(LONG_WAIT);
 		firstRun = 0;
+		
+		//Set Status
+		sendOk = send(msgTextStatus.set("Started", 1));
+		wait(SHORT_WAIT);
 	}
  
 	if(dhtRefreshTime + DHT_REFRESH < time)
@@ -163,24 +171,32 @@ void loop()
 		// Fetch temperatures from DHT sensor
 		float temperature = dht.getTemperature();
 		if (isnan(temperature)) {
+			#ifdef MY_DEBUG
 			Serial.println("Failed reading temperature from DHT");
+			#endif
+			sendOk = send(msgTextStatus.set("DHT Fail Temp", 1));
+			wait(SHORT_WAIT);
 		} else if (temperature != lastTemp) {
 			lastTemp = temperature;
 			if (!metric) {
 				temperature = dht.toFahrenheit(temperature);
 			}
 			sendOk = send(msgTemp.set(temperature, 1));
+			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
 			Serial.print("T: ");
 			Serial.println(temperature);
-			wait(SHORT_WAIT);
 			#endif
 		}
   
 		// Fetch humidity from DHT sensor
 		float humidity = dht.getHumidity();
 		if (isnan(humidity)) {
+			#ifdef MY_DEBUG
 			Serial.println("Failed reading humidity from DHT");
+			#endif
+			sendOk = send(msgTextStatus.set("DHT Fail Humid", 1));
+			wait(SHORT_WAIT);
 		} else if (humidity != lastHum) {
 			lastHum = humidity;
 			sendOk = send(msgHum.set(humidity, 1));
@@ -235,10 +251,14 @@ void receive(const MyMessage &message) {
 		if (message.type==V_LIGHT) {
 			if(message.getInt() == 1) {
 				// Turn on the relay briefly.
+				#ifdef MY_DEBUG
 				Serial.println("Relay on.");
+				#endif
 				digitalWrite(RELAY1_PIN, RELAY_ON);
 				wait(LONG_WAIT);
+				#ifdef MY_DEBUG
 				Serial.println("Relay off.");
+				#endif
 				digitalWrite(RELAY1_PIN, RELAY_OFF);
 				
 				//Reply with turning the value to 0 again.
