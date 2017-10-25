@@ -26,6 +26,9 @@
  * sensor using DHT11/DHT-22 
  * http://www.mysensors.org/build/humidity
  */
+
+#include "MyMatrix.h"
+#include "MyMusic.h"
  
 //In case MySensor network is no longer available.
 //#define STANDALONE_MODE
@@ -76,6 +79,39 @@ void MusicBoxLogic()
 	Serial.println("Playing Music...");
 }
 
+void MatrixStartLogic()
+{
+	lc.shutdown(0,false);  // Wake up displays
+	lc.setIntensity(0,5);  // Set intensity levels
+	lc.clearDisplay(0);  // Clear Displays
+	PlayMatrixInvaderA();
+}
+
+void MatrixStopLogic()
+{
+  lc.clearDisplay(0);
+  lc.shutdown(0,true);
+}
+
+void StartActivationRoutine()
+{
+  MatrixStartLogic();
+}
+
+void EndActivationRoutine()
+{
+  MatrixStopLogic();
+}
+
+void RunActivationRoutine()
+{
+  StartActivationRoutine();
+
+  wait(5000);
+  
+  EndActivationRoutine();
+}
+
 //This doesn't seem to work... at least with using MySensors and not being connected.
 //I know it works without mysensors.  Possible it only works when Mysensor is connected
 //when using mysenesors.
@@ -113,38 +149,38 @@ void loop()
 	uint8_t value;
 	static uint8_t lastValue=2;
 	
-  //We are awake.  Now request the status of our switch from the gateway / openhab
-  Serial.println("Request from server...");
+	//We are awake.  Now request the status of our switch from the gateway / openhab
+	Serial.println("Request from server...");
 	request(CHILD_ID_RELAY1, V_LIGHT);
 
-  //mysgw: TSF:MSG:READ,10-10-0,s=0,c=2,t=2,pt=0,l=0,sg=0:
-  //mysgw: Sending message on topic: mygateway1-out/10/0/2/0/2
+	//mysgw: TSF:MSG:READ,10-10-0,s=0,c=2,t=2,pt=0,l=0,sg=0:
+	//mysgw: Sending message on topic: mygateway1-out/10/0/2/0/2
 	
 	//Wait two seconds for a response as openhab and the gateway might need
-  //some time to talk back after our request.
-  //This wait specifically loops in mysensor logic for communication.
-  //This is where our receive function will get called and activateBox would be set.
+	//some time to talk back after our request.
+	//This wait specifically loops in mysensor logic for communication.
+	//This is where our receive function will get called and activateBox would be set.
 	wait(2000);
 	
 	//If we got the button interrupt, then play the box.
 	if(activateBox)
 	{
-		MusicBoxLogic();
+		RunActivationRoutine();
 		activateBox = false;
 	}
 
-  Serial.print("Sleep for ... ");
-  Serial.println(SLEEP_TIME);
+	Serial.print("Sleep for ... ");
+	Serial.println(SLEEP_TIME);
 	//This sleep will will cause the radio to power down.
 	//Hopefully powering everything down... with a button wakeup
 	sleep(BUTTON_PIN-2, CHANGE, SLEEP_TIME);
 	
 	//This is if we get interrupt during sleep from the button.
-  //Not sure if this works or not.  Haven't tested out sleep wakeup.
+	//Not sure if this works or not.  Haven't tested out sleep wakeup.
 	value = digitalRead(BUTTON_PIN);
 	if (value==HIGH) {
     //ignore button temporarily
-		//MusicBoxLogic();
+		//RunActivationRoutine();
 	}
 }
 
