@@ -79,28 +79,16 @@ void MusicBoxLogic()
 	Serial.println("Playing Music...");
 }
 
-void MatrixStartLogic()
-{
-	lc.shutdown(0,false);  // Wake up displays
-	lc.setIntensity(0,5);  // Set intensity levels
-	lc.clearDisplay(0);  // Clear Displays
-	PlayMatrixInvaderA();
-}
-
-void MatrixStopLogic()
-{
-  lc.clearDisplay(0);
-  lc.shutdown(0,true);
-}
-
 void StartActivationRoutine()
 {
   MatrixStartLogic();
+  MusicStartLogic();
 }
 
 void EndActivationRoutine()
 {
   MatrixStopLogic();
+  MusicStopLogic();
 }
 
 void RunActivationRoutine()
