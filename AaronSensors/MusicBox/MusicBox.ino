@@ -31,7 +31,7 @@
 //#define STANDALONE_MODE
  
 // Enable debug prints
-//#define MY_DEBUG
+#define MY_DEBUG
 
 #ifndef STANDALONE_MODE
 // Enable and select radio type attached
@@ -59,7 +59,9 @@
 #define BUTTON_PIN 2
 #define RELAY1_PIN 6
 
-unsigned long SLEEP_TIME = 900000;  // sleep time between reads (seconds * 1000 milliseconds)
+//900 seconds = 15min
+//unsigned long SLEEP_TIME = 900000;  // sleep time between reads (seconds * 1000 milliseconds)
+unsigned long SLEEP_TIME = 5000;
 
 MyMessage msgMusicBoxSwitch1(CHILD_ID_RELAY1, V_LIGHT);
 
@@ -71,7 +73,7 @@ void ActivateBox()
 
 void MusicBoxLogic()
 {
-	Serial.println("Playing Box...");
+	Serial.println("Playing Music...");
 }
 
 //This doesn't seem to work... at least with using MySensors and not being connected.
@@ -80,7 +82,8 @@ void MusicBoxLogic()
 void ButtonInterrupt()
 {
 	Serial.println("Interrupt...");
-	ActivateBox();
+	//Disable Button for just now
+	//ActivateBox();
 }
 
 void setup()  
@@ -110,14 +113,22 @@ void loop()
 	uint8_t value;
 	static uint8_t lastValue=2;
 	
-	Serial.println("Loop...");
-	
-	//We were sleeping... request the status of our input.
+	//We were going to sleep for input... request the status of our input.
+  Serial.println("Request from server...");
 	request(CHILD_ID_RELAY1, S_LIGHT);
+
+  //mysgw: TSF:MSG:READ,10-10-0,s=0,c=2,t=3,pt=0,l=0,sg=0:
+  //mysgw: Sending message on topic: mygateway1-out/10/0/2/0/3
 	
 	//Wait two seconds for a response.
 	//Might get a button event which hopefully the attached interrupt will get.
-	wait(2000);
+  //This wait is how the sensor is able to receive messages.
+  //Currently, only while its in this spot can it receive a message.
+  //Currently shows error on server saying that it wasn't ack.
+  //I think I need to ask the server to send us our variable.. and then immedietly recieve it.
+  //Which might be that request above??? but it looks like its comming through on the wrong type?
+  //The server is def getting the request and responding... but we just are not receiving anything... need to look into request
+	wait(5000);
 	
 	//If we got the button interrupt, then play the box.
 	if(activateBox)
@@ -125,19 +136,24 @@ void loop()
 		MusicBoxLogic();
 		activateBox = false;
 	}
-	
+
+  Serial.print("Sleep for ... ");
+  Serial.println(SLEEP_TIME);
 	//This sleep will will cause the radio to power down.
 	//Cant do that if we actually want to be able to sent it commands.
+  //I guess this is just to look for a button press and power down for a bit...
 	sleep(BUTTON_PIN-2, CHANGE, SLEEP_TIME);
 	
 	//This is if we get interrupt during sleep from the button.
 	value = digitalRead(BUTTON_PIN);
 	if (value==HIGH) {
-		MusicBoxLogic();
+    //ignore button temporarily
+		//MusicBoxLogic();
 	}
 }
 
 void receive(const MyMessage &message) {
+  Serial.println("Got a message!");
 	// We only expect one type of message from controller. But we better check anyway.
 	if (message.sensor == CHILD_ID_RELAY1) {
 		if (message.type==V_LIGHT) {
