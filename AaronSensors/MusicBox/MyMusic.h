@@ -3,6 +3,13 @@
 
 #include "Playtune.h"
 
+const byte PROGMEM pbscore [] = {
+7,83, 0x90,69, 1,212, 0x80, 0x90,69, 1,212, 0x80, 0x90,67, 1,212, 0x80, 0x90,69, 5,126, 
+0x80, 0x90,65, 1,212, 0x80, 0x90,70, 3,169, 0x80, 0x90,70, 1,212, 0x80, 0x90,72, 1,212, 0x80, 
+0x90,69, 0,234, 0x80, 0x90,67, 0,234, 0x80, 0x90,65, 7,83, 0x80, 0x90,69, 1,212, 0x80, 0x90,69, 
+1,212, 0x80, 0x90,67, 1,212, 0x80, 0x90,69, 5,126, 0x80, 0x90,65, 1,212, 0x80, 0x90,67, 1,212, 
+0x80, 0x90,67, 3,169, 0x80, 0x90,65, 1,212, 0x80, 0x90,69, 5,126, 0x80, 0xf0};
+
 // Playtune bytestream for file "bach_bwv798.mid" created by MIDITONES V1.1 on Sun Feb 27 12:45:00 2011
 const byte PROGMEM score [] = {
 0,2, 0x90,59, 0,2, 0x91,51, 0x92,40, 0,13, 0x81, 0,186, 0x82, 0x91,51, 0,4, 0x92,42, 
@@ -66,9 +73,9 @@ Playtune pt;
 void MusicStartLogic()
 {
 	pt.tune_initchan (4); 
-	pt.tune_initchan (5);
+	//pt.tune_initchan (5);
 	
-	pt.tune_playscore (score); /* start playing */
+	pt.tune_playscore (pbscore); /* start playing */
 }
 
 void MusicStopLogic()

@@ -17,17 +17,29 @@ byte invader1a[] =
    B10100101
 };
 
+byte heart_empty_top[] =
+{
+   B01100110,  // First frame of invader #1
+   B10011001,
+   B10000001,
+   B01000010,
+   B00100100,
+   B00011000,
+   B00000000,
+   B00000000
+};
+
 void loadMatrixData(byte* passedData)
 {
   for (int i = 0; i < 8; i++)  
   {
-    lc.setRow(0,i,passedData[i]);
+    lc.setColumn(0,i,passedData[i]);
   }
 }
 
 void PlayMatrixInvaderA()
 {
-	loadMatrixData(invader1a);
+	loadMatrixData(heart_empty_top);
 }
 
 void MatrixStartLogic()

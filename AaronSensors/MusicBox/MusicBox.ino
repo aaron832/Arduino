@@ -29,6 +29,7 @@
 
 #include "MyMatrix.h"
 #include "MyMusic.h"
+#include "MyServo.h"
  
 //In case MySensor network is no longer available.
 //#define STANDALONE_MODE
@@ -46,6 +47,7 @@
 //Children message IDs
 #define CHILD_ID_RELAY1 0
 
+#include <math.h>
 #include <SPI.h>
 #include <MySensors.h> 
 #endif
@@ -68,7 +70,8 @@ unsigned long SLEEP_TIME = 5000;
 
 MyMessage msgMusicBoxSwitch1(CHILD_ID_RELAY1, V_LIGHT);
 
-static bool activateBox = false;
+//static bool activateBox = false;
+static bool activateBox = true;  //debug just activate
 void ActivateBox()
 {
 	activateBox = true;
@@ -83,21 +86,26 @@ void StartActivationRoutine()
 {
   MatrixStartLogic();
   MusicStartLogic();
+  ServoStartLogic();
 }
 
 void EndActivationRoutine()
 {
   MatrixStopLogic();
   MusicStopLogic();
+  ServoStopLogic();
 }
 
 void RunActivationRoutine()
 {
   StartActivationRoutine();
 
-  wait(5000);
+ //pt.tune_delay(5000);
+ play_pbroutine();
   
   EndActivationRoutine();
+
+  wait(1000);
 }
 
 //This doesn't seem to work... at least with using MySensors and not being connected.
@@ -115,8 +123,10 @@ void setup()
 	// Setup the buttons
 	pinMode(BUTTON_PIN, INPUT);
 
-    // Activate internal pull-ups
-    digitalWrite(BUTTON_PIN, HIGH);
+  // Activate internal pull-ups
+  digitalWrite(BUTTON_PIN, HIGH);
+
+  ServoSetupLogic();
 	
 	//Attach interrupt to the button.
 	attachInterrupt(digitalPinToInterrupt(BUTTON_PIN), ButtonInterrupt, RISING);
@@ -185,3 +195,20 @@ void receive(const MyMessage &message) {
 		}
 	}
 }
+
+void play_pbroutine() {
+  //Song is 18 seconds long.
+  //30ms delays
+  for(int i=0; i < 560; i++)
+  {
+    double sinInput = ( ((double)(i%140))/140 ) * (2*PI);
+    sinInput -= (PI/2); //offset for moving up sin wave
+    double angle = (sin(sinInput) + 1) / 2;
+    int xangle = (int)((angle * 140) + 30);
+    Serial.println(angle);
+    SetServo(xangle);
+    //SetServo((i % 140) + 20);
+    delay(30);
+  }
+}
+
