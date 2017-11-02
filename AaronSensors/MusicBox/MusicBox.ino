@@ -77,11 +77,6 @@ void ActivateBox()
 	activateBox = true;
 }
 
-void MusicBoxLogic()
-{
-	Serial.println("Playing Music...");
-}
-
 void StartActivationRoutine()
 {
   MatrixStartLogic();
@@ -100,8 +95,7 @@ void RunActivationRoutine()
 {
   StartActivationRoutine();
 
- //pt.tune_delay(5000);
- play_pbroutine();
+  play_pbroutine();
   
   EndActivationRoutine();
 
@@ -196,19 +190,38 @@ void receive(const MyMessage &message) {
 	}
 }
 
+#define PBROUTINE_FRAMES 560
+#define PBROUTINE_STEP_MS 30
+#define PBROUTINE_SERVO_SHORT_ANGLE 30
+#define PBROUTINE_SERVO_ANGLE_WIDTH 140
 void play_pbroutine() {
   //Song is 18 seconds long.
-  //30ms delays
-  for(int i=0; i < 560; i++)
+  int matrixFrame = 0;
+  int lastMatrixFrame = -1;
+  double matrixStep = PBROUTINE_FRAMES / beatingHeart1_len;
+  double sinInput;
+  double angle;
+  int xangle;
+
+  //Routine loop
+  for(int i=0; i < PBROUTINE_FRAMES; i++)
   {
-    double sinInput = ( ((double)(i%140))/140 ) * (2*PI);
+    //Matrix
+    matrixFrame = (int)((double)i / matrixStep);
+    if(matrixFrame != lastMatrixFrame && matrixFrame < beatingHeart1_len) {
+      loadMatrixDataHexFrame(beatingHeart1, matrixFrame);
+      lastMatrixFrame = matrixFrame;
+    }
+    
+    //Servo
+    sinInput = ( ((double)(i%PBROUTINE_SERVO_ANGLE_WIDTH))/PBROUTINE_SERVO_ANGLE_WIDTH ) * (2*PI);
     sinInput -= (PI/2); //offset for moving up sin wave
-    double angle = (sin(sinInput) + 1) / 2;
-    int xangle = (int)((angle * 140) + 30);
+    angle = (sin(sinInput) + 1) / 2;
+    xangle = (int)((angle * PBROUTINE_SERVO_ANGLE_WIDTH) + PBROUTINE_SERVO_SHORT_ANGLE);
     Serial.println(angle);
     SetServo(xangle);
     //SetServo((i % 140) + 20);
-    delay(30);
+    delay(PBROUTINE_STEP_MS);
   }
 }
 
