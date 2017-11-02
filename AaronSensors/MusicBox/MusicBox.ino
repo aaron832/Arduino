@@ -95,7 +95,8 @@ void RunActivationRoutine()
 {
   StartActivationRoutine();
 
-  play_pbroutine();
+  //play_pbroutine();
+  play_kokoroutine();
   
   EndActivationRoutine();
 
@@ -203,6 +204,8 @@ void play_pbroutine() {
   double angle;
   int xangle;
 
+  //Sart Music
+  pt.tune_playscore (pbscore); /* start playing 18 seconds */
   //Routine loop
   for(int i=0; i < PBROUTINE_FRAMES; i++)
   {
@@ -222,6 +225,41 @@ void play_pbroutine() {
     SetServo(xangle);
     //SetServo((i % 140) + 20);
     delay(PBROUTINE_STEP_MS);
+  }
+}
+
+#define KOKOROUTINE_FRAMES 683 //20.5 seconds @ 30ms
+#define KOKOROUTINE_STEP_MS 30
+#define KOKOROUTINE_SERVO_SHORT_ANGLE 30
+#define KOKOROUTINE_SERVO_ANGLE_WIDTH 140
+void play_kokoroutine() {
+  int matrixFrame = 0;
+  int lastMatrixFrame = -1;
+  double matrixStep = KOKOROUTINE_FRAMES / sunkissheart_len;
+  double sinInput;
+  double angle;
+  int xangle;
+  
+  pt.tune_playscore (kokoscore); /* start playing 19.5 seconds */
+  //pt.tune_playscore (pbscore);
+  
+  for(int i=0; i < KOKOROUTINE_FRAMES; i++)
+  {
+    //Matrix
+    matrixFrame = (int)((double)i / matrixStep);
+    if(matrixFrame != lastMatrixFrame && matrixFrame < sunkissheart_len) {
+      loadMatrixDataHexFrame(sunkissheart, matrixFrame);
+      lastMatrixFrame = matrixFrame;
+    }
+
+    //Servo up to 85 in 4 seconds
+    int introFrames = 4000 / KOKOROUTINE_STEP_MS;
+    if(i < introFrames)
+    {
+      SetServo( (int)(85 * ((double)i/(double)introFrames)) + SERVO_BASE );
+    }
+
+    delay(KOKOROUTINE_STEP_MS);
   }
 }
 

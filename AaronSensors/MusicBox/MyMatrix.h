@@ -36,6 +36,43 @@ const uint64_t PROGMEM beatingHeart1[] =
 };
 const int beatingHeart1_len = sizeof(beatingHeart1)/8;
 
+const uint64_t PROGMEM sunkissheart[] = {
+  0x8142183c3c184281,
+  0x40211a3c3c588402,
+  0x20201b3c3cd80404,
+  0x1010183ffc180808,
+  0x080818fc3f181010,
+  0x0404d83c3c1b2020,
+  0x0284583c3c1a2140,
+  0x0042183c3c184200,
+  0x0000183c3c180000,
+  0x000000183c3c1800,
+  0x00000000183c3c18,
+  0xc300000000183c3c,
+  0xe7c300000000183c,
+  0xe7e7c30000000018,
+  0xc3e7e7c300000000,
+  0x81c3e7e7c3000000,
+  0xdf81c3e7e7c30000,
+  0xfbdf81c3e7e7c300,
+  0xc3fbdf81c3e7e7c3,
+  0x637f7f6163f7f763,
+  0x667e7e6666ffff66,
+  0x7effff7e66ffff66,
+  0xffffffffffffff66,
+  0xffffffffffffffff,
+  0xffffffe7e7ffffff,
+  0xffffe7c3c3e7ffff,
+  0xffe7c3818181dbff,
+  0xffe7c381000099ff,
+  0xc399244281996699,
+  0x8118244281996681,
+  0x0018244281996600,
+  0x00183c66c3ff6600,
+  0x00183c7effff6600
+};
+const int sunkissheart_len = sizeof(sunkissheart)/8;
+
 void loadMatrixDataHexFrame(const uint64_t *_framearray, int _frame)
 {
   uint64_t image;
