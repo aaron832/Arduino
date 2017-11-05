@@ -96,7 +96,8 @@ void RunActivationRoutine()
   StartActivationRoutine();
 
   //play_pbroutine();
-  play_kokoroutine();
+  //play_kokoroutine();
+  play_ponyoroutine();
   
   EndActivationRoutine();
 
@@ -191,6 +192,8 @@ void receive(const MyMessage &message) {
 	}
 }
 
+#define G_STEP_MS 30
+
 #define PBROUTINE_FRAMES 560
 #define PBROUTINE_STEP_MS 30
 #define PBROUTINE_SERVO_SHORT_ANGLE 30
@@ -221,7 +224,7 @@ void play_pbroutine() {
     sinInput -= (PI/2); //offset for moving up sin wave
     angle = (sin(sinInput) + 1) / 2;
     xangle = (int)((angle * PBROUTINE_SERVO_ANGLE_WIDTH) + PBROUTINE_SERVO_SHORT_ANGLE);
-    Serial.println(angle);
+    //Serial.println(angle);
     SetServo(xangle);
     //SetServo((i % 140) + 20);
     delay(PBROUTINE_STEP_MS);
@@ -242,7 +245,7 @@ void play_kokoroutine() {
   
   pt.tune_playscore (kokoscore); /* start playing 19.5 seconds */
   //pt.tune_playscore (pbscore);
-  
+
   for(int i=0; i < KOKOROUTINE_FRAMES; i++)
   {
     //Matrix
@@ -258,8 +261,94 @@ void play_kokoroutine() {
     {
       SetServo( (int)(85 * ((double)i/(double)introFrames)) + SERVO_BASE );
     }
+    if(i >= introFrames)
+    {
+    }
 
     delay(KOKOROUTINE_STEP_MS);
+  }
+}
+
+#define PONYOROUTINE_FRAMES 683 //20.5 seconds @ 30ms
+#define PONYOROUTINE_STEP_MS 30
+#define PONYOROUTINE_SERVO_SHORT_ANGLE 47
+#define PONYOROUTINE_SERVO_ANGLE_WIDTH 100 //120
+#define PONYOROUTINE_1_MS 4000
+#define PONYOROUTINE_1_FRAMES (PONYOROUTINE_1_MS / G_STEP_MS)
+#define PONYOROUTINE_2_MS 8000
+#define PONYOROUTINE_2_FRAMES (PONYOROUTINE_2_MS / G_STEP_MS)
+void play_ponyoroutine() {
+  double sinInput;
+  double yvalue;
+  int xvalue;
+  int matrixFrame = 0;
+  int lastMatrixFrame = -1;  
+  
+  pt.tune_playscore (ponyoscore); /* start playing 20 seconds */
+
+  int i=0;
+  double matrixStep = PONYOROUTINE_1_FRAMES / ((double)fishswim_len*2);
+  //4 sconds intro
+  for(i=0; i < PONYOROUTINE_1_FRAMES; i++)
+  {
+    //2 seconds
+    if(i<PONYOROUTINE_1_FRAMES/2) {
+      SetServo( (int)(85 * ((double)i/(PONYOROUTINE_1_FRAMES/2))) + SERVO_BASE );
+    }
+
+    matrixFrame = (int)((double)i / matrixStep) % fishswim_len;
+    if(matrixFrame != lastMatrixFrame) {
+      loadMatrixDataHexFrame(fishswim, matrixFrame);
+      lastMatrixFrame = matrixFrame;
+    }
+    
+    delay(G_STEP_MS);
+  }
+  
+  //8 second, 2 second sway
+  int swayStep = 0;
+  matrixFrame = 0;
+  lastMatrixFrame = -1;
+  matrixStep = (PONYOROUTINE_2_FRAMES / (double)fishtojelly_len);
+  for(i=0; i < PONYOROUTINE_2_FRAMES; i++)
+  {
+    matrixFrame = (int)((double)i / matrixStep) % fishtojelly_len;
+    if(matrixFrame != lastMatrixFrame) {
+      loadMatrixDataHexFrame(fishtojelly, matrixFrame);
+      lastMatrixFrame = matrixFrame;
+    }
+    
+    //Sway left to right 4 seconds cycle
+    //2PI over 4 seconds.
+    sinInput = ((double)swayStep / (PONYOROUTINE_2_FRAMES/2)) * (2*PI);
+    //sinInput -= (PI/2); //offset for moving up sin wave
+    yvalue = (sin(sinInput) + 1) / 2;
+    xvalue = (int)((yvalue * PONYOROUTINE_SERVO_ANGLE_WIDTH) + PONYOROUTINE_SERVO_SHORT_ANGLE);
+    SetServo(xvalue);
+    //Take a break every second.
+    if( ( (int)( (double)i / (1000/G_STEP_MS)) % 2) == 0 ) {
+      swayStep++;
+    }
+    delay(G_STEP_MS);
+  }
+
+  matrixFrame = 0;
+  lastMatrixFrame = -1;
+  matrixStep = PONYOROUTINE_2_FRAMES / ((double)jellydance_len*2);
+  for(i=0; i < PONYOROUTINE_2_FRAMES; i++)
+  { 
+    matrixFrame = (int)((double)i / matrixStep) % jellydance_len;
+    if(matrixFrame != lastMatrixFrame) {
+      if((matrixFrame/2) % 2 == 0) {
+        SetServo(100);
+      } else {
+        SetServo(90);
+      }
+      loadMatrixDataHexFrame(jellydance, matrixFrame);
+      lastMatrixFrame = matrixFrame;
+    }
+    
+    delay(G_STEP_MS);
   }
 }
 

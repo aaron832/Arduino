@@ -73,6 +73,39 @@ const uint64_t PROGMEM sunkissheart[] = {
 };
 const int sunkissheart_len = sizeof(sunkissheart)/8;
 
+const uint64_t PROGMEM fishswim[] = {
+  0x0000397f7f394000,
+  0x00397f7f39200040,
+  0x397f7f3940002000,
+  0x00397f7f39200040,
+  0x0000397f7f392000,
+  0x000000397f7f3900
+};
+const int fishswim_len = sizeof(fishswim)/8;
+
+const uint64_t PROGMEM fishtojelly[] = {
+  0x0c00000072fefe72,
+  0x3c18000000e4fcfc,
+  0xfc7830000000c8f8,
+  0xf8f8f06000000090,
+  0xa3f1f0e0c0000000,
+  0x4747e3e1c0800000,
+  0x058f8fc7c3800000,
+  0x0a0a1f1f8f870000,
+  0x0a14153f3f1f0e00,
+  0x15152a2a7f7f3e1c
+};
+const int fishtojelly_len = sizeof(fishtojelly)/8;
+
+const uint64_t PROGMEM jellydance[] = {
+  0x2a2a5454fefe7c38, //right
+  0x54545454fefe7c38, //stand right
+  0x54542a2a7f7f3e1c, //left
+  0x2a2a2a2a7f7f3e1c //stand left
+};
+const int jellydance_len = sizeof(jellydance)/8;
+
+
 void loadMatrixDataHexFrame(const uint64_t *_framearray, int _frame)
 {
   uint64_t image;
