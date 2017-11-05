@@ -66,12 +66,13 @@
 
 //900 seconds = 15min
 //unsigned long SLEEP_TIME = 900000;  // sleep time between reads (seconds * 1000 milliseconds)
-unsigned long SLEEP_TIME = 5000;
+//unsigned long SLEEP_TIME = 5000;
+unsigned long SLEEP_TIME = 300000; // 5min
 
 MyMessage msgMusicBoxSwitch1(CHILD_ID_RELAY1, V_LIGHT);
 
-//static bool activateBox = false;
-static bool activateBox = true;  //debug just activate
+static bool activateBox = false;
+//static bool activateBox = true;  //debug just activate
 void ActivateBox()
 {
 	activateBox = true;
@@ -95,9 +96,18 @@ void RunActivationRoutine()
 {
   StartActivationRoutine();
 
-  //play_pbroutine();
-  //play_kokoroutine();
-  play_ponyoroutine();
+  int myrand = random(3);
+  switch(myrand) {
+    case 0:
+      play_pbroutine();
+      break;
+    case 1:
+      play_kokoroutine();
+      break;
+    case 2:
+      play_ponyoroutine();
+      break;
+  }
   
   EndActivationRoutine();
 
@@ -116,6 +126,8 @@ void ButtonInterrupt()
 
 void setup()  
 {
+  randomSeed(analogRead(5));
+  
 	// Setup the buttons
 	pinMode(BUTTON_PIN, INPUT);
 
