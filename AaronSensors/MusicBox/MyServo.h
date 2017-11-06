@@ -3,7 +3,8 @@
 
 #include <Servo.h>
 
-#define SERVO_BASE 7
+//#define SERVO_BASE 7
+#define SERVO_BASE 5
 
 Servo servo1;
 
@@ -25,6 +26,11 @@ void ServoStopLogic()
 {
 	servo1.write(SERVO_BASE);
   delay(1000);
+  servo1.detach();
+}
+
+void ServoStopNoMoveLogic()
+{
   servo1.detach();
 }
 

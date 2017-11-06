@@ -51,6 +51,9 @@ const unsigned char PROGMEM ponyoscore [] = {
 0,236, 0x80, 0,13, 0x90,69, 0,236, 0x80, 0,13, 0x90,66, 1,230, 0x80, 0,13, 0x90,67, 4,174, 0x80, 0xf0};
 // This score contains 419 bytes, and 1 tone generator is used.
 
+const unsigned char PROGMEM accept_settings_score [] = {
+0x90,60, 0,250, 0x90,72, 0,250, 0x80, 0xf0};
+
 Playtune pt;
 
 void MusicStartLogic()

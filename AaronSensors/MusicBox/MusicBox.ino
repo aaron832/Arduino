@@ -46,6 +46,7 @@
 
 //Children message IDs
 #define CHILD_ID_RELAY1 0
+#define CHILD_ID_SLEEPTIME 1
 
 #include <math.h>
 #include <SPI.h>
@@ -66,11 +67,16 @@
 
 //900 seconds = 15min
 //unsigned long SLEEP_TIME = 900000;  // sleep time between reads (seconds * 1000 milliseconds)
-//unsigned long SLEEP_TIME = 5000;
-unsigned long SLEEP_TIME = 300000; // 5min
+unsigned long SLEEP_TIME = 5000; //Starting time
+#define TRIGGER_SLEEPS_NO_RESPONSE 10
+#define MAX_SLEEPS_NO_RESPONSE 11
+int sleeps_without_response = 0;
 
 MyMessage msgMusicBoxSwitch1(CHILD_ID_RELAY1, V_LIGHT);
+MyMessage msgMusicBoxSleepTime(CHILD_ID_SLEEPTIME, V_VAR1);
 
+static bool no_response_recovered = false;
+static bool settings_accepted = false;
 static bool activateBox = false;
 //static bool activateBox = true;  //debug just activate
 void ActivateBox()
@@ -147,6 +153,7 @@ void presentation()
 	wait(LONG_WAIT);
 
 	present(CHILD_ID_RELAY1, S_LIGHT, "Open Box");
+  present(CHILD_ID_RELAY1, S_CUSTOM, "Sleep Time");
 	wait(LONG_WAIT);
 }
 
@@ -167,6 +174,12 @@ void loop()
 	//This wait specifically loops in mysensor logic for communication.
 	//This is where our receive function will get called and activateBox would be set.
 	wait(2000);
+  sleeps_without_response++;
+  if(sleeps_without_response > MAX_SLEEPS_NO_RESPONSE) {
+    sleeps_without_response = MAX_SLEEPS_NO_RESPONSE;
+  }
+  request(CHILD_ID_SLEEPTIME, V_VAR1);
+  wait(2000);
 	
 	//If we got the button interrupt, then play the box.
 	if(activateBox)
@@ -174,6 +187,30 @@ void loop()
 		RunActivationRoutine();
 		activateBox = false;
 	}
+
+  if(settings_accepted)
+  {
+    Serial.println("Settings Accepted.");
+    MusicStartLogic();
+    pt.tune_playscore (accept_settings_score);
+    delay(1000);
+    MusicStopLogic();
+    settings_accepted = false;
+  }
+
+  if(sleeps_without_response == TRIGGER_SLEEPS_NO_RESPONSE)
+  {
+    ServoStartLogic();
+    SetServo(95);
+    delay(1000);
+    ServoStopNoMoveLogic();
+  }
+  else if(no_response_recovered)
+  {
+    ServoStartLogic();
+    ServoStopLogic();
+    no_response_recovered = false;
+  }
 
 	Serial.print("Sleep for ... ");
 	Serial.println(SLEEP_TIME);
@@ -191,7 +228,14 @@ void loop()
 }
 
 void receive(const MyMessage &message) {
-  Serial.println("Got a message!");
+  if(sleeps_without_response >= TRIGGER_SLEEPS_NO_RESPONSE) {
+    no_response_recovered = true;
+  }
+  sleeps_without_response = 0;
+  Serial.print("Got a message! s:");
+  Serial.print(message.sensor);
+  Serial.print(" t:");
+  Serial.println(message.type);
 	// We only expect one type of message from controller. But we better check anyway.
 	if (message.sensor == CHILD_ID_RELAY1) {
 		if (message.type==V_LIGHT) {
@@ -202,6 +246,18 @@ void receive(const MyMessage &message) {
 			}
 		}
 	}
+  else if (message.sensor == CHILD_ID_SLEEPTIME) {
+    if (message.type==V_VAR1) {
+      Serial.print("It's a sleep message of:");
+      Serial.println(message.getLong());
+      unsigned long newsleeptime = message.getLong();
+      if(SLEEP_TIME != newsleeptime &&
+         newsleeptime > 1000 && newsleeptime < 3600000) {
+          SLEEP_TIME = newsleeptime;
+          settings_accepted = true;
+      }
+    }
+  }
 }
 
 #define G_STEP_MS 30
