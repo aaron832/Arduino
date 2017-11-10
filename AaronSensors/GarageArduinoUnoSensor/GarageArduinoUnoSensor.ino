@@ -30,6 +30,8 @@
 // Enable debug prints
 //#define MY_DEBUG
 
+#define MY_NODE_ID 105
+
 // Enable and select radio type attached
 #define MY_RADIO_NRF24
 //#define MY_RADIO_RFM69
@@ -53,12 +55,14 @@
 #define CHILD_ID_BAYDOORSENSOR 2
 #define CHILD_ID_DOORSENSOR 3
 #define CHILD_ID_RELAY1 4
+#define CHILD_ID_TEXT1 5
 
 //Arduino pins
 #define HUMIDITY_SENSOR_DIGITAL_PIN 3
 #define BAYDOORSENSOR_PIN 4
 #define DOORSENSOR_PIN 5
-#define RELAY1_PIN 6
+#define RELAY1_PIN 8
+#define DEBUG_LED_PIN 7
 
 unsigned long FORCE_REFRESH = 60L*1000L;
 unsigned long DHT_REFRESH = 30L*1000L;
@@ -73,6 +77,7 @@ MyMessage msgTemp(CHILD_ID_TEMP, V_TEMP);
 MyMessage msgBayDoor(CHILD_ID_BAYDOORSENSOR, V_TRIPPED);
 MyMessage msgDoor(CHILD_ID_DOORSENSOR, V_TRIPPED);
 MyMessage msgBayDoorSwitch(CHILD_ID_RELAY1, V_LIGHT);
+MyMessage msgTextStatus(CHILD_ID_TEXT1, V_TEXT);
 
 //Not really necessary as we are only checking every SLEEP_TIME of 1 second.
 Bounce debouncerBayDoor = Bounce();
@@ -84,6 +89,7 @@ unsigned long time = 0;
 unsigned long dhtRefreshTime = 0;
 unsigned long forceRefreshTime = 0;
 int forceRefresh = 0;
+bool sendOk = false;
 
 void setup()  
 {
@@ -103,6 +109,9 @@ void setup()
 	//Setup Relays
 	pinMode(RELAY1_PIN, OUTPUT);
 	digitalWrite(RELAY1_PIN, RELAY_OFF);
+	
+	//Start debug led on
+	digitalWrite(DEBUG_LED_PIN,HIGH);
 
 	// After setting up the button, setup debouncer
 	debouncerBayDoor.attach(BAYDOORSENSOR_PIN);
@@ -126,6 +135,8 @@ void presentation()
 	wait(LONG_WAIT);
 	present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay");
 	wait(LONG_WAIT);
+	present(CHILD_ID_TEXT1, S_INFO, "Device Status");
+	wait(LONG_WAIT);
 }
 
 void loop()      
@@ -145,13 +156,17 @@ void loop()
 	if(firstRun)
 	{
 		//Clear buttons
-		send(msgBayDoorSwitch.set(0));
+		sendOk = send(msgBayDoorSwitch.set(0));
 
 		Serial.println("Setting up subscriptions...");
 		wait(LONG_WAIT);
 		request(CHILD_ID_RELAY1, V_LIGHT);
 		wait(LONG_WAIT);
 		firstRun = 0;
+		
+		//Set Status
+		sendOk = send(msgTextStatus.set("Started", 1));
+		wait(SHORT_WAIT);
 	}
  
 	if(dhtRefreshTime + DHT_REFRESH < time)
@@ -159,24 +174,35 @@ void loop()
 		// Fetch temperatures from DHT sensor
 		float temperature = dht.readTemperature(readFahrenheit);
 		if (isnan(temperature)) {
+			#ifdef MY_DEBUG
 			Serial.println("Failed reading temperature from DHT");
+			#endif
+			sendOk = send(msgTextStatus.set("DHT Fail Temp", 1));
+			wait(SHORT_WAIT);
 		} else if (temperature != lastTemp) {
 			lastTemp = temperature;
-			send(msgTemp.set(temperature, 1));
+			if (!metric) {
+				temperature = dht.toFahrenheit(temperature);
+			}
+			sendOk = send(msgTemp.set(temperature, 1));
+			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
 			Serial.print("T: ");
 			Serial.println(temperature);
-			wait(SHORT_WAIT);
 			#endif
 		}
   
 		// Fetch humidity from DHT sensor
 		float humidity = dht.readHumidity();
 		if (isnan(humidity)) {
+			#ifdef MY_DEBUG
 			Serial.println("Failed reading humidity from DHT");
+			#endif
+			sendOk = send(msgTextStatus.set("DHT Fail Humid", 1));
+			wait(SHORT_WAIT);
 		} else if (humidity != lastHum) {
 			lastHum = humidity;
-			send(msgHum.set(humidity, 1));
+			sendOk = send(msgHum.set(humidity, 1));
 			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
 			Serial.print("H: ");
@@ -195,7 +221,7 @@ void loop()
 	value = debouncerBayDoor.read();
 	if (value != bayDoorState || forceRefresh) {
 		// Send in the new value
-		send(msgBayDoor.set(value==HIGH ? 1 : 0));
+		sendOk = send(msgBayDoor.set(value==HIGH ? 1 : 0));
 		wait(SHORT_WAIT);
 		bayDoorState = value;
 	}
@@ -203,7 +229,7 @@ void loop()
 	value = debouncerDoor.read();
 	if (value != doorState || forceRefresh) {
 		// Send in the new value
-		send(msgDoor.set(value==HIGH ? 1 : 0));
+		sendOk = send(msgDoor.set(value==HIGH ? 1 : 0));
 		wait(SHORT_WAIT);
 		doorState = value;
 	}
@@ -215,6 +241,7 @@ void loop()
 		forceRefresh = 0;
 	}
 
+	digitalWrite(DEBUG_LED_PIN,sendOk ? LOW : HIGH);
 	//This sleep will prevent messages from being received.  Meant for sensors that only send data.
 	//sleep(SLEEP_TIME); //sleep a bit
 	Serial.print(".");
@@ -227,14 +254,18 @@ void receive(const MyMessage &message) {
 		if (message.type==V_LIGHT) {
 			if(message.getInt() == 1) {
 				// Turn on the relay briefly.
+				#ifdef MY_DEBUG
 				Serial.println("Relay on.");
+				#endif
 				digitalWrite(RELAY1_PIN, RELAY_ON);
 				wait(LONG_WAIT);
+				#ifdef MY_DEBUG
 				Serial.println("Relay off.");
+				#endif
 				digitalWrite(RELAY1_PIN, RELAY_OFF);
 				
 				//Reply with turning the value to 0 again.
-				send(msgBayDoorSwitch.set(0));
+				sendOk = send(msgBayDoorSwitch.set(0));
 			}
 		}
 	}
