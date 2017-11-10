@@ -32,7 +32,7 @@
  * The GW code is designed for Arduino 328p / 16MHz.  ATmega168 does not have enough memory to run this program.
  *
  * LED purposes:
- * - To use the feature, uncomment WITH_LEDS_BLINKING in MyConfig.h
+ * - To use the feature, uncomment MY_DEFAULT_xxx_LED_PIN in the sketch below
  * - RX (green) - blink fast on radio message recieved. In inclusion mode will blink fast only on presentation recieved
  * - TX (yellow) - blink fast on radio message transmitted. In inclusion mode will blink slowly
  * - ERR (red) - fast blink on error during transmission error or recieve crc error
@@ -58,18 +58,18 @@
 // The W5100 ethernet module seems to have a hard time co-operate with
 // radio on the same spi bus.
 #if !defined(MY_W5100_SPI_EN) && !defined(ARDUINO_ARCH_SAMD)
-  #define MY_SOFTSPI
-  #define MY_SOFT_SPI_SCK_PIN 14
-  #define MY_SOFT_SPI_MISO_PIN 16
-  #define MY_SOFT_SPI_MOSI_PIN 15
+#define MY_SOFTSPI
+#define MY_SOFT_SPI_SCK_PIN 14
+#define MY_SOFT_SPI_MISO_PIN 16
+#define MY_SOFT_SPI_MOSI_PIN 15
 #endif
 
 // When W5100 is connected we have to move CE/CSN pins for NRF radio
 #ifndef MY_RF24_CE_PIN
-  #define MY_RF24_CE_PIN 5
+#define MY_RF24_CE_PIN 5
 #endif
 #ifndef MY_RF24_CS_PIN
-  #define MY_RF24_CS_PIN 6
+#define MY_RF24_CS_PIN 6
 #endif
 
 // Enable to UDP
@@ -106,11 +106,11 @@
 // Uncomment to override default HW configurations
 //#define MY_DEFAULT_ERR_LED_PIN 7  // Error led pin
 //#define MY_DEFAULT_RX_LED_PIN  8  // Receive led pin
-//#define MY_DEFAULT_TX_LED_PIN  9  // the PCB, on board LED
+//#define MY_DEFAULT_TX_LED_PIN  9  // Transmit led pin
 
 
 #if defined(MY_USE_UDP)
-  #include <EthernetUdp.h>
+#include <EthernetUdp.h>
 #endif
 #include <Ethernet.h>
 #include <MySensors.h>
@@ -120,5 +120,6 @@ void setup()
 {
 }
 
-void loop() {
+void loop()
+{
 }
