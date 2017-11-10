@@ -181,9 +181,9 @@ void loop()
 			wait(SHORT_WAIT);
 		} else if (temperature != lastTemp) {
 			lastTemp = temperature;
-			if (!metric) {
-				temperature = dht.toFahrenheit(temperature);
-			}
+			//if (!metric) {
+				temperature = dht.convertCtoF(temperature);
+			//}
 			sendOk = send(msgTemp.set(temperature, 1));
 			wait(SHORT_WAIT);
 			#ifdef MY_DEBUG
