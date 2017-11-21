@@ -36,27 +36,107 @@
 
 #include <MySensors.h>
 #include <LiquidCrystal.h>
+#include "Time.h"
 
+#define MAX_CHARS 17
+#define LONG_WAIT 500
 unsigned long SLEEP_TIME = 1000; // Sleep time between reports (in milliseconds)
-#define CHILD_ID_LCDTEXT 1   // Id of the sensor child
+unsigned long WAIT_MODE_TIME = 3600000;
+#define CHILD_ID_LCDTEXT_TOP 0   // Id of the sensor child
+#define CHILD_ID_LCDTEXT_BOTTOM 1   // Id of the sensor child
 #define INPUT_BUTTON 2
 
+//#define TRIGGER_SLEEPS_NO_RESPONSE 10
+#define TRIGGER_SLEEPS_NO_RESPONSE 2
+#define MAX_SLEEPS_NO_RESPONSE 0xFFFE
+unsigned int sleeps_without_response = 0;
+
 // Initialize motion message
-MyMessage msg(CHILD_ID_LCDTEXT, V_TEXT);
+MyMessage msg_top(CHILD_ID_LCDTEXT_TOP, V_TEXT);
+MyMessage msg_bottom(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
 const int rs = 8, en = 7, d4 = 6, d5 = 5, d6 = 4, d7 = 3;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+const int buzzer = A2;
+const int redled = A0;
+const int greenled = A1;
+
+time_t timeReceivedTime = 0;
+unsigned long receivedTime = 0;
+unsigned int displayindex = 0;
+
+unsigned long lastUpdate=0, lastRequest=0;
 
 void setup()
 {
+  pinMode(buzzer, OUTPUT);
+  pinMode(redled, OUTPUT);
+  pinMode(greenled, OUTPUT);
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
 
   lcd.print("Starting up...");
+  lcd.setCursor ( 0, 1 );
+  lcd.print("Request Time...");
+
+  requestTime();
+  wait(2000, C_INTERNAL, I_TIME);
 }
 
-void writeScreen(const char* string)
+void DisplayClock()
 {
-  lcd.print(string);
+  time_t currentTime = receivedTime + (now() - timeReceivedTime);
+
+  char buf[MAX_CHARS];
+  snprintf(buf, MAX_CHARS, "     %02d:%02d:%02d ", hour(currentTime), minute(currentTime), second(currentTime));
+  writeScreen(buf, 0);
+  writeScreen("", 1);
+}
+
+void UpdateDisplay()
+{
+  if(displayindex == 0)
+  {
+    DisplayClock();
+  }
+  else
+  {
+    //DisplayEvent(displayindex);
+  }
+
+  static bool ledfun = false;
+
+  if(ledfun) {
+    digitalWrite(redled, HIGH);
+    digitalWrite(greenled, LOW);
+  }
+  else {
+    digitalWrite(greenled, HIGH);
+    digitalWrite(redled, LOW);
+  }
+  ledfun = !ledfun;
+}
+
+void writeScreen(const char* string, int sensorid)
+{
+  char buf[MAX_CHARS];
+  for(int i=0; i<MAX_CHARS; i++) {
+    buf[i] = ' ';
+  }
+  buf[MAX_CHARS-1] = '\0';
+  int copylength = strlen(string);
+  if(copylength > MAX_CHARS)
+    copylength = MAX_CHARS;
+  else if(copylength > 0)
+    copylength--;  // do not copy null terminator
+  strncpy(buf,string,copylength);
+  //Serial.print("Display: ");
+  //Serial.print(sensorid);
+  //Serial.print(" S: ");
+  //Serial.println(string);
+  
+  lcd.home();
+  lcd.setCursor ( 0, sensorid );
+  lcd.print(buf);
 }
 
 void presentation()
@@ -65,26 +145,85 @@ void presentation()
 	sendSketchInfo("LCD Clock Display", "1.0");
 
 	// Register all sensors to gw (they will be created as child devices)
-	present(CHILD_ID_LCDTEXT, S_INFO);
+	present(CHILD_ID_LCDTEXT_TOP, S_INFO);
+  present(CHILD_ID_LCDTEXT_BOTTOM, S_INFO);
 }
 
 void loop()
 {
+  unsigned long now = millis();
+
+  // If no time has been received yet, request it every 10 second from controller
+  // When time has been received, request update every hour
+  if ((receivedTime == 0 && (now-lastRequest) > (10UL*1000UL))
+    || (receivedTime != 0 && (now-lastRequest) > (60UL*1000UL*60UL))) {
+    // Request time from controller. 
+    Serial.println("requesting time");
+    requestTime();
+    wait(2000, C_INTERNAL, I_TIME);
+    lastRequest = now;
+  }
+
+  // Update display every second
+  if (now-lastUpdate > 1000) {
+    UpdateDisplay();  
+    lastUpdate = now;
+  }
+
+  static bool playSound = true;
+
+  if(playSound) {
+      tone(buzzer, 1000); // Send 1KHz sound signal...
+      delay(500);        // ...for 1 sec
+      tone(buzzer, 1200); // Send 1KHz sound signal...
+      delay(500);        // ...for 1 sec
+      noTone(buzzer);     // Stop sound...
+      playSound = false;
+  }
+  
+  //sleeps_without_response++;
+  //if(sleeps_without_response > MAX_SLEEPS_NO_RESPONSE) {
+  //  sleeps_without_response = MAX_SLEEPS_NO_RESPONSE;
+  //}
+  
 	// Sleep until interrupt comes in on motion sensor. Send update every two minute.
-	sleep(digitalPinToInterrupt(INPUT_BUTTON), CHANGE, SLEEP_TIME);
+  //request(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
+  //wait(LONG_WAIT);
+
+  //if(sleeps_without_response >= TRIGGER_SLEEPS_NO_RESPONSE)
+  //{
+  //  char buf[MAX_CHARS];
+  //  snprintf(buf,MAX_CHARS,"No Communication");
+  //  writeScreen(buf,0);
+  //  snprintf(buf,MAX_CHARS,"%i", sleeps_without_response);
+  //  writeScreen(buf,1);
+  //}
+
+	//sleep(digitalPinToInterrupt(INPUT_BUTTON), CHANGE, SLEEP_TIME);
+
+  //wait(WAIT_MODE_TIME);
 }
 
 // This is called when a message is received
 void receive(const MyMessage &message) {
   if (message.type == V_TEXT) {                       // Text messages only
-    Serial.print("Message: "); 
+    sleeps_without_response = 0;
+    Serial.print("Sensor: "); 
     Serial.print(message.sensor); 
     Serial.print(", Message: "); 
     Serial.println(message.getString());     // Write some debug info
-    if (message.sensor == CHILD_ID_LCDTEXT) {
-      writeScreen(message.getString());
+    if (message.sensor == CHILD_ID_LCDTEXT_TOP ||
+        message.sensor == CHILD_ID_LCDTEXT_BOTTOM) {
+      writeScreen(message.getString(), message.sensor);
     }
   }
 }
 
-
+// This is called when a new time value was received
+void receiveTime(unsigned long rectime) {
+  // Ok, set incoming time 
+  Serial.print("Time value received: ");
+  Serial.println(rectime);
+  receivedTime = rectime;
+  timeReceivedTime = now();
+}
