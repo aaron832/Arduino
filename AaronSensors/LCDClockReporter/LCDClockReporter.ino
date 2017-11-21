@@ -42,8 +42,7 @@
 #define LONG_WAIT 500
 unsigned long SLEEP_TIME = 1000; // Sleep time between reports (in milliseconds)
 unsigned long WAIT_MODE_TIME = 3600000;
-#define CHILD_ID_LCDTEXT_TOP 0   // Id of the sensor child
-#define CHILD_ID_LCDTEXT_BOTTOM 1   // Id of the sensor child
+#define CHILD_ID_NOTIFICATION 0   // Id of the sensor child
 #define INPUT_BUTTON 2
 
 //#define TRIGGER_SLEEPS_NO_RESPONSE 10
@@ -51,9 +50,8 @@ unsigned long WAIT_MODE_TIME = 3600000;
 #define MAX_SLEEPS_NO_RESPONSE 0xFFFE
 unsigned int sleeps_without_response = 0;
 
-// Initialize motion message
-MyMessage msg_top(CHILD_ID_LCDTEXT_TOP, V_TEXT);
-MyMessage msg_bottom(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
+// Initialize sensor messages
+MyMessage msg_notification(CHILD_ID_NOTIFICATION, V_TEXT);
 const int rs = 8, en = 7, d4 = 6, d5 = 5, d6 = 4, d7 = 3;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 const int buzzer = A2;
@@ -66,14 +64,23 @@ unsigned int displayindex = 0;
 
 unsigned long lastUpdate=0, lastRequest=0;
 
+struct Notification {
+  time_t timeRec;
+  char message[MAX_CHARS];
+}
+
+#define maxNotifications 10
+Notification gNotifications[maxNotifications];
+unsigned int nPointer = 0;
+
 void setup()
 {
   pinMode(buzzer, OUTPUT);
   pinMode(redled, OUTPUT);
   pinMode(greenled, OUTPUT);
+  
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
-
   lcd.print("Starting up...");
   lcd.setCursor ( 0, 1 );
   lcd.print("Request Time...");
@@ -82,9 +89,14 @@ void setup()
   wait(2000, C_INTERNAL, I_TIME);
 }
 
+time_t GetCurrentTime() 
+{
+  return receivedTime + (now() - timeReceivedTime);
+}
+
 void DisplayClock()
 {
-  time_t currentTime = receivedTime + (now() - timeReceivedTime);
+  time_t currentTime = GetCurrentTime();
 
   char buf[MAX_CHARS];
   snprintf(buf, MAX_CHARS, "     %02d:%02d:%02d ", hour(currentTime), minute(currentTime), second(currentTime));
@@ -145,8 +157,7 @@ void presentation()
 	sendSketchInfo("LCD Clock Display", "1.0");
 
 	// Register all sensors to gw (they will be created as child devices)
-	present(CHILD_ID_LCDTEXT_TOP, S_INFO);
-  present(CHILD_ID_LCDTEXT_BOTTOM, S_INFO);
+	present(CHILD_ID_NOTIFICATION, S_INFO);
 }
 
 void loop()
@@ -206,16 +217,18 @@ void loop()
 
 // This is called when a message is received
 void receive(const MyMessage &message) {
-  if (message.type == V_TEXT) {                       // Text messages only
-    sleeps_without_response = 0;
-    Serial.print("Sensor: "); 
-    Serial.print(message.sensor); 
-    Serial.print(", Message: "); 
+  if (message.sensor == CHILD_ID_NOTIFICATION && message.type == V_TEXT) 
+  { // Text messages only
+    sleeps_without_response = 0; 
+    Serial.print("Notification Rec: "); 
     Serial.println(message.getString());     // Write some debug info
-    if (message.sensor == CHILD_ID_LCDTEXT_TOP ||
-        message.sensor == CHILD_ID_LCDTEXT_BOTTOM) {
-      writeScreen(message.getString(), message.sensor);
-    }
+    //writeScreen(message.getString(), message.sensor);
+
+    gNotifications[nPointer].timeRec = GetCurrentTime();
+    strncpy(gNotifications[nPointer].message, message.getString(), MAX_CHARS);
+    nPointer++;
+    if(nPointer >= maxNotifications)
+      nPointer = 0;
   }
 }
 
