@@ -45,6 +45,7 @@ unsigned long SLEEP_TIME = 1000; // Sleep time between reports (in milliseconds)
 unsigned long WAIT_MODE_TIME = 3600000;
 #define CHILD_ID_LCDTEXT_TOP 0   // Id of the sensor child
 #define CHILD_ID_LCDTEXT_BOTTOM 1   // Id of the sensor child
+#define CHILD_ID_LCDBRIGHTNESS 2   // Id of the sensor child
 #define INPUT_BUTTON 2
 
 //#define TRIGGER_SLEEPS_NO_RESPONSE 10
@@ -55,20 +56,26 @@ unsigned int sleeps_without_response = 0;
 // Initialize motion message
 MyMessage msg_top(CHILD_ID_LCDTEXT_TOP, V_TEXT);
 MyMessage msg_bottom(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
-const int rs = 8, en = 7, d4 = 6, d5 = 5, d6 = 4, d7 = 3;
+MyMessage msg_brightness(CHILD_ID_LCDBRIGHTNESS, V_PERCENTAGE);
+const int rs = 8, en = 7, d4 = 3, d5 = 4, d6 = 5, d7 = 6;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
-const int buzzer = A2;
-const int redled = A0;
-const int greenled = A1;
+const int buzzer = A1;
+
+const int lsize = 3;
+const int leds[] = {A0, A2, A3};
+int setBrightness = 0;
+int brightnessTimeout = 10; //seconds
 
 time_t timeReceivedTime = 0;
 unsigned long receivedTime = 0;
 unsigned int displayindex = 0;
 
-unsigned long lastUpdate=0, lastRequest=0;
+unsigned long lastUpdate=0, lastRequest=0, brightnessTimer=0;
 bool displayMsgRec[2] = {false, false};
 
-byte specialchars[8][8] = {
+#define MAX_SPECIAL_CHAR 8
+#define MAX_ALERT_CHAR 4
+byte specialchars[MAX_SPECIAL_CHAR][8] = {
   {  B00000, B01010, B11111, B11111, B01110, B00100, B00000 },
   {  B00000, B01010, B11111, B11111, B01110, B00100, B00000 },
   {  B00000, B01010, B11111, B11111, B01110, B00100, B00000 },
@@ -82,11 +89,13 @@ byte specialchars[8][8] = {
 void setup()
 {
   pinMode(buzzer, OUTPUT);
-  pinMode(redled, OUTPUT);
-  pinMode(greenled, OUTPUT);
+  for(int i=0; i<lsize; i++) {
+    pinMode(leds[i], OUTPUT);
+  }
+  UpdateBrightness(4);
   // set up the LCD's number of columns and rows:
   lcd.begin(16, 2);
-  for(int i=0; i<8; i++) {
+  for(int i=0; i<MAX_SPECIAL_CHAR; i++) {
     lcd.createChar(i, specialchars[i]);
   }
 
@@ -96,14 +105,35 @@ void setup()
   buf[0] = buf[MAX_CHARS-1] = 0x01;
   writeScreen(buf, 1);
 
-  requestTime();
-  wait(2000, C_INTERNAL, I_TIME);
+  bool requestPass = false;
 
-  request(CHILD_ID_LCDTEXT_TOP, V_TEXT);
-  wait(2000, C_SET, V_TEXT);
+  while(!requestPass) {
+    Serial.println("Setup request time..");
+    requestPass = requestTime();
+    wait(2000, C_INTERNAL, I_TIME);
+  }
+  requestPass = false;
 
-  //request(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
-  //wait(2000, C_SET, V_TEXT);
+  while(!requestPass) {
+    Serial.println("Setup request top lcd..");
+    requestPass = request(CHILD_ID_LCDTEXT_TOP, V_TEXT);
+    wait(2000, C_SET, V_TEXT);
+  }
+  requestPass = false;
+
+  while(!requestPass) {
+    Serial.println("Setup request bottom lcd..");
+    requestPass = request(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
+    wait(2000, C_SET, V_TEXT);
+  }
+  requestPass = false;
+
+  while(!requestPass) {
+    Serial.println("Setup request brightness..");
+    requestPass = request(CHILD_ID_LCDBRIGHTNESS, V_PERCENTAGE);
+    wait(2000, C_SET, V_PERCENTAGE);
+  }
+  requestPass = false;
 }
 
 void DisplayClock()
@@ -116,6 +146,20 @@ void DisplayClock()
   lcd.print(buf);
 }
 
+void UpdateBrightness(int level)
+{
+  if(level < 0)
+    level = setBrightness;
+  if(level > 4)
+    level = 4;
+
+  digitalWrite(leds[2], level & (1 << 0));
+  digitalWrite(leds[1], level & (1 << 1));
+  digitalWrite(leds[0], level & (1 << 2));
+
+  brightnessTimer = now();
+}
+
 void UpdateDisplay()
 {
   if(displayindex == 0)
@@ -126,27 +170,29 @@ void UpdateDisplay()
   {
     //DisplayEvent(displayindex);
   }
+}
 
-  static bool ledfun = false;
-
-  if(ledfun) {
-    digitalWrite(redled, HIGH);
-    digitalWrite(greenled, LOW);
-  }
-  else {
-    digitalWrite(greenled, HIGH);
-    digitalWrite(redled, LOW);
-  }
-  ledfun = !ledfun;
+void PerformAlert(char alertChar) {
+  //nothing yet
+  int alertLevel = (int)alertChar - MAX_SPECIAL_CHAR;
+  Serial.print("Alert Char: ");
+  Serial.print((int)alertChar);
+  Serial.print(" Alert Level: ");
+  Serial.println(alertLevel);
 }
 
 void writeScreen(const char* string, int sensorid)
 {
+  bool hasAlertChar = false;
   char buf[MAX_CHARS+1];
-
+  int firstChar = 0;
   int lastChar = MAX_CHARS;
   if(sensorid == 0)
     lastChar = (MAX_CHARS - CLOCK_CHAR_OFFSET);
+  if(string && string[0] >= MAX_SPECIAL_CHAR+1 && string[0] < MAX_SPECIAL_CHAR+1+MAX_ALERT_CHAR) {
+    PerformAlert(string[0]);
+    firstChar++;
+  }
 
   //Clear out buffer and put null terminator at end
   for(int i=0; i<=MAX_CHARS; i++) {
@@ -155,7 +201,7 @@ void writeScreen(const char* string, int sensorid)
   buf[lastChar] = '\0';
 
   //Do not want to copy over the null terminator.
-  strncpy(buf,string,min(lastChar,strlen(string)));
+  strncpy(buf,&string[firstChar],min(lastChar,strlen(string)));
   //Serial.print("Display: ");
   //Serial.print(sensorid);
   //Serial.print(" S: ");
@@ -169,7 +215,7 @@ void writeScreen(const char* string, int sensorid)
     
   //lcd.print(buf);
   for(int i=0; i<lastChar; i++) {
-    if(buf[i] < 9 && buf[i] > 0) {
+    if(buf[i] < MAX_SPECIAL_CHAR+1 && buf[i] > 0) {
       lcd.write(byte(buf[i]-1));
     }
     else {
@@ -190,15 +236,15 @@ void presentation()
 
 void loop()
 {
-  unsigned long now = millis();
+  unsigned long now_ms = millis();
 
   bool receivedAllInfo = (receivedTime != 0) && 
     displayMsgRec[CHILD_ID_LCDTEXT_TOP] && displayMsgRec[CHILD_ID_LCDTEXT_BOTTOM];
   
   //If we have not received information from controller in setup, then keep
-  //requesting every 10 seconds.
-  if ( (!receivedAllInfo && (now-lastRequest) > (10UL*1000UL)) ||
-       (receivedAllInfo == true && (now-lastRequest) > (60UL*1000UL*60UL)) )
+  //requesting every 10 seconds.  Request regardless in hour increments.
+  if ( (!receivedAllInfo && (now_ms-lastRequest) > (10UL*1000UL)) ||
+       (receivedAllInfo == true && (now_ms-lastRequest) > (60UL*1000UL*60UL)) )
   {
     if(receivedTime == 0) {
       requestTime();
@@ -213,50 +259,30 @@ void loop()
     //  wait(2000, C_INTERNAL, V_TEXT);
     //}
 
-    lastRequest = now;
+    lastRequest = now_ms;
   }
 
   // Update display every second
-  if (now-lastUpdate > 1000) {
+  if (now_ms-lastUpdate > 1000) {
     UpdateDisplay();  
-    lastUpdate = now;
+    lastUpdate = now_ms;
   }
 
-  static bool playSound = true;
-
-  if(playSound) {
+  if(brightnessTimer != 0 && (brightnessTimer + brightnessTimeout) * 1000UL < now_ms)
+  {
+    UpdateBrightness(-1);
+    brightnessTimeout = 0;
+  }
+  
+  static bool startupComplete = true;
+  if(startupComplete) {
       tone(buzzer, 1000); // Send 1KHz sound signal...
-      delay(500);        // ...for 1 sec
+      delay(50);        // ...for 1 sec
       tone(buzzer, 1200); // Send 1KHz sound signal...
-      delay(500);        // ...for 1 sec
+      delay(50);        // ...for 1 sec
       noTone(buzzer);     // Stop sound...
-      playSound = false;
+      startupComplete = false;
   }
-
-  //Do not sleep.  Otherwise clock needs to be adjusted after sleep.
-  //Now does not account for sleep duration.
-  
-  //sleeps_without_response++;
-  //if(sleeps_without_response > MAX_SLEEPS_NO_RESPONSE) {
-  //  sleeps_without_response = MAX_SLEEPS_NO_RESPONSE;
-  //}
-  
-	// Sleep until interrupt comes in on motion sensor. Send update every two minute.
-  //request(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
-  //wait(LONG_WAIT);
-
-  //if(sleeps_without_response >= TRIGGER_SLEEPS_NO_RESPONSE)
-  //{
-  //  char buf[MAX_CHARS];
-  //  snprintf(buf,MAX_CHARS,"No Communication");
-  //  writeScreen(buf,0);
-  //  snprintf(buf,MAX_CHARS,"%i", sleeps_without_response);
-  //  writeScreen(buf,1);
-  //}
-
-	//sleep(digitalPinToInterrupt(INPUT_BUTTON), CHANGE, SLEEP_TIME);
-
-  //wait(WAIT_MODE_TIME);
 }
 
 // This is called when a message is received
@@ -273,6 +299,26 @@ void receive(const MyMessage &message) {
       displayMsgRec[message.sensor] = true;
       writeScreen(message.getString(), message.sensor);
     }
+  }
+  else if(message.sensor == CHILD_ID_LCDBRIGHTNESS && message.type == V_PERCENTAGE) {
+    int percent = message.getInt();
+
+    if(percent == 0)
+      setBrightness = 0;
+    else if(percent > 0 && percent <= 10)
+      setBrightness = 1;
+    else if(percent > 10 && percent <= 20)
+      setBrightness = 2;
+    else if(percent > 20 && percent <= 30)
+      setBrightness = 3;
+    else
+      setBrightness = 4;
+
+    Serial.print("Got Percent:");
+    Serial.print(percent);
+    Serial.print("  Update brightness:");
+    Serial.println(setBrightness);
+    UpdateBrightness(-1);
   }
 }
 
