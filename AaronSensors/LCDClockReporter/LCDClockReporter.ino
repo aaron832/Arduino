@@ -46,7 +46,9 @@ unsigned long WAIT_MODE_TIME = 3600000;
 #define CHILD_ID_LCDTEXT_TOP 0   // Id of the sensor child
 #define CHILD_ID_LCDTEXT_BOTTOM 1   // Id of the sensor child
 #define CHILD_ID_LCDBRIGHTNESS 2   // Id of the sensor child
-#define INPUT_BUTTON 2
+#define CHILD_ID_BUTTONLEFT 3   // Id of the sensor child
+#define CHILD_ID_BUTTONMID 4   // Id of the sensor child
+#define CHILD_ID_BUTTONRIGHT 5   // Id of the sensor child
 
 //#define TRIGGER_SLEEPS_NO_RESPONSE 10
 #define TRIGGER_SLEEPS_NO_RESPONSE 2
@@ -57,14 +59,26 @@ unsigned int sleeps_without_response = 0;
 MyMessage msg_top(CHILD_ID_LCDTEXT_TOP, V_TEXT);
 MyMessage msg_bottom(CHILD_ID_LCDTEXT_BOTTOM, V_TEXT);
 MyMessage msg_brightness(CHILD_ID_LCDBRIGHTNESS, V_PERCENTAGE);
+MyMessage msg_buttonLeft(CHILD_ID_BUTTONLEFT, V_STATUS);
+MyMessage msg_buttonMid(CHILD_ID_BUTTONMID, V_STATUS);
+MyMessage msg_buttonRight(CHILD_ID_BUTTONRIGHT, V_STATUS);
 const int rs = 8, en = 7, d4 = 3, d5 = 4, d6 = 5, d7 = 6;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 const int buzzer = A1;
+const int input_button_left = A7;
+const int input_button_mid = A5;
+const int input_button_right = A6;
+int left_button_read, left_button, left_button_last = 0;
+int mid_button_read, mid_button, mid_button_last = 0;
+int right_button_read, right_button, right_button_last = 0;
+unsigned long debounceDelay = 50;
+unsigned long lastDebounceTime = 0;
+bool sendOk = false;
 
 const int lsize = 3;
 const int leds[] = {A0, A2, A3};
-int setBrightness = 0;
-int brightnessTimeout = 10; //seconds
+int setBrightness, tmpBrightness = 0;
+int brightnessTimeout = 10000;  //10 seconds
 
 time_t timeReceivedTime = 0;
 unsigned long receivedTime = 0;
@@ -89,6 +103,10 @@ byte specialchars[MAX_SPECIAL_CHAR][8] = {
 void setup()
 {
   pinMode(buzzer, OUTPUT);
+  pinMode(input_button_left, INPUT);
+  pinMode(input_button_mid, INPUT);
+  pinMode(input_button_right, INPUT);
+  
   for(int i=0; i<lsize; i++) {
     pinMode(leds[i], OUTPUT);
   }
@@ -146,6 +164,14 @@ void DisplayClock()
   lcd.print(buf);
 }
 
+void TempIncreaseBrightness()
+{
+  if(setBrightness < 2)
+    UpdateBrightness(2);
+  else
+    UpdateBrightness(min(setBrightness+1, 4));
+}
+
 void UpdateBrightness(int level)
 {
   if(level < 0)
@@ -153,11 +179,20 @@ void UpdateBrightness(int level)
   if(level > 4)
     level = 4;
 
+  tmpBrightness = level;
+  
+  Serial.print("Brightness:");
+  Serial.print(level & (1 << 0));
+  Serial.print(",");
+  Serial.print(level & (1 << 1));
+  Serial.print(",");
+  Serial.println(level & (1 << 2));
+  
   digitalWrite(leds[2], level & (1 << 0));
   digitalWrite(leds[1], level & (1 << 1));
   digitalWrite(leds[0], level & (1 << 2));
 
-  brightnessTimer = now();
+  brightnessTimer = millis();
 }
 
 void UpdateDisplay()
@@ -224,6 +259,56 @@ void writeScreen(const char* string, int sensorid)
   }
 }
 
+void CheckButtons()
+{
+  left_button_read = analogRead(input_button_left) > 512 ? HIGH : LOW;
+  mid_button_read = analogRead(input_button_mid) > 512 ? HIGH : LOW;
+  right_button_read = analogRead(input_button_right) > 512 ? HIGH : LOW;
+
+  if (left_button_read != left_button_last ||
+      mid_button_read != mid_button_last ||
+      right_button_read != right_button_last) {
+    // reset the debouncing timer
+    lastDebounceTime = millis();
+    Serial.print(left_button_read);
+    Serial.print(",");
+    Serial.print(mid_button_read);
+    Serial.print(",");
+    Serial.println(right_button_read);
+  }
+  if((millis() - lastDebounceTime) > debounceDelay)
+  {
+    if(left_button != left_button_read) {
+      TempIncreaseBrightness();
+      if(left_button_read == HIGH) {
+        Serial.println("Sending left button.");
+        sendOk = send(msg_buttonLeft.set(1));
+      }
+      left_button = left_button_read;
+    }
+    if(mid_button != mid_button_read) {
+       TempIncreaseBrightness();
+       if(mid_button_read == HIGH) {
+         Serial.println("Sending mid button.");
+         sendOk = send(msg_buttonMid.set(1));
+       }
+       mid_button = mid_button_read;
+    }
+    if(right_button != right_button_read) {
+      TempIncreaseBrightness();
+      if(right_button_read == HIGH) {
+        Serial.println("Sending right button.");
+        sendOk = send(msg_buttonRight.set(1));
+      }
+      right_button = right_button_read;
+    }
+  }
+
+  left_button_last = left_button_read;
+  mid_button_last = mid_button_read;
+  right_button_last = right_button_read;
+}
+
 void presentation()
 {
 	// Send the sketch version information to the gateway and Controller
@@ -268,10 +353,10 @@ void loop()
     lastUpdate = now_ms;
   }
 
-  if(brightnessTimer != 0 && (brightnessTimer + brightnessTimeout) * 1000UL < now_ms)
+  if(brightnessTimer != 0 && tmpBrightness != setBrightness &&
+  (brightnessTimer + brightnessTimeout) < now_ms)
   {
     UpdateBrightness(-1);
-    brightnessTimeout = 0;
   }
   
   static bool startupComplete = true;
@@ -283,6 +368,8 @@ void loop()
       noTone(buzzer);     // Stop sound...
       startupComplete = false;
   }
+
+  CheckButtons();
 }
 
 // This is called when a message is received
