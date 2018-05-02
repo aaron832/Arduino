@@ -47,6 +47,7 @@
 //Children message IDs
 #define CHILD_ID_RELAY1 0
 #define CHILD_ID_SLEEPTIME 1
+#define CHILD_ID_CUSTOMTUNE 2
 
 #include <math.h>
 #include <SPI.h>
@@ -74,10 +75,12 @@ int sleeps_without_response = 0;
 
 MyMessage msgMusicBoxSwitch1(CHILD_ID_RELAY1, V_LIGHT);
 MyMessage msgMusicBoxSleepTime(CHILD_ID_SLEEPTIME, V_VAR1);
+MyMessage msgMusicBoxCustomTune(CHILD_ID_CUSTOMTUNE, V_VAR1);
 
 static bool no_response_recovered = false;
 static bool settings_accepted = false;
 static bool activateBox = false;
+unsigned char custom_payload[(MAX_PAYLOAD*4)+2+1];  //command, note, channel, delay?
 //static bool activateBox = true;  //debug just activate
 void ActivateBox()
 {
@@ -132,6 +135,7 @@ void ButtonInterrupt()
 
 void setup()  
 {
+	custom_payload[0] = 0;
   randomSeed(analogRead(5));
   
 	// Setup the buttons
@@ -153,7 +157,8 @@ void presentation()
 	wait(LONG_WAIT);
 
 	present(CHILD_ID_RELAY1, S_LIGHT, "Open Box");
-  present(CHILD_ID_RELAY1, S_CUSTOM, "Sleep Time");
+	present(CHILD_ID_SLEEPTIME, S_CUSTOM, "Sleep Time");
+	present(CHILD_ID_CUSTOMTUNE, S_CUSTOM, "Custom Tune");
 	wait(LONG_WAIT);
 }
 
@@ -196,6 +201,17 @@ void loop()
     delay(1000);
     MusicStopLogic();
     settings_accepted = false;
+  }
+  
+  //We got a custom payload
+  if(custom_payload[0] != 0)
+  {
+	  Serial.println("Play custom payload.");
+	  MusicStartLogic();
+	  pt.tune_playscore (custom_payload, false);
+	  delay(5000); //max 5 seconds to play
+	  MusicStopLogic();
+	  custom_payload[0] = 0;
   }
 
   if(sleeps_without_response == TRIGGER_SLEEPS_NO_RESPONSE)
@@ -258,6 +274,21 @@ void receive(const MyMessage &message) {
       }
     }
   }
+	else if (message.sensor == CHILD_ID_CUSTOMTUNE) {
+		Serial.println("It's a custome tune message.");
+		//strcpy(custom_payload, message.getString());
+		unsigned char * data = (unsigned char*)message.getCustom();
+		int i = 0;
+		for(; data[i] != 0; i++)
+		{
+			custom_payload[i*4] = 0x90;
+			custom_payload[(i*4)+1] = data[i];
+			custom_payload[(i*4)+2] = 0;
+			custom_payload[(i*4)+3] = 250;
+		}
+		custom_payload[i*4] = 0x80;
+		custom_payload[(i*4)+1] = 0xf0;
+	}
 }
 
 #define G_STEP_MS 30
