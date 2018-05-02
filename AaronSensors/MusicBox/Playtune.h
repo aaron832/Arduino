@@ -30,8 +30,9 @@ class Playtune
 {
 public:
  void tune_initchan (byte pin);			// assign a timer to an output pin
- void tune_playscore (const byte *score);	// start playing a polyphonic score
+ void tune_playscore (const byte *score, bool isprogmem=true);	// start playing a polyphonic score
  volatile static boolean tune_playing;	// is the score still playing?
+ volatile static boolean isprogmem;	// is the data progmem?
  void tune_stopscore (void);			// stop playing the score
  void tune_delay (unsigned msec);		// delay in milliseconds
  void tune_stopchans (void);			// stop all timers

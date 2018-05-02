@@ -362,6 +362,7 @@ volatile unsigned long delay_toggle_count;     /* countdown tune_ delay() delays
 volatile const byte *score_start = 0;
 volatile const byte *score_cursor = 0;
 volatile boolean Playtune::tune_playing = false;
+volatile boolean Playtune::isprogmem = true;
 boolean volume_present = ASSUME_VOLUME;
 
 // Table of midi note frequencies * 2
@@ -706,13 +707,16 @@ void tune_stopnote (byte chan) {
 // Start playing a score
 //-----------------------------------------------
 
-void Playtune::tune_playscore (const byte *score) {
+void Playtune::tune_playscore (const byte *score, bool isprogmem) {
   if (tune_playing) tune_stopscore();
   score_start = score;
   volume_present = ASSUME_VOLUME;
-
+  Playtune::isprogmem = isprogmem;
   // look for the optional file header
-  memcpy_P(&file_header, score, sizeof(file_hdr_t)); // copy possible header from PROGMEM to RAM
+  if(isprogmem)
+    memcpy_P(&file_header, score, sizeof(file_hdr_t)); // copy possible header from PROGMEM to RAM
+  else
+	memcpy(&file_header, score, sizeof(file_hdr_t)); // copy possible header from PROGMEM to RAM
   if (file_header.id1 == 'P' && file_header.id2 == 't') { // validate it
     volume_present = file_header.f1 & HDR_F1_VOLUME_PRESENT;
 #if DBUG
@@ -740,9 +744,9 @@ void tune_stepscore (void) {
   /* if CMD < 0x80, then the other 7 bits and the next byte are a 15-bit big-endian number of msec to wait */
 
   while (1) {
-    cmd = pgm_read_byte(score_cursor++);
+    cmd = Playtune::isprogmem ? pgm_read_byte(score_cursor++) : (byte)*score_cursor++;
     if (cmd < 0x80) { /* wait count in msec. */
-      duration = ((unsigned)cmd << 8) | (pgm_read_byte(score_cursor++));
+      duration = ((unsigned)cmd << 8) | ( Playtune::isprogmem ? pgm_read_byte(score_cursor++) : (byte)*score_cursor++ );
       wait_toggle_count = ((unsigned long) wait_timer_frequency2 * duration + 500) / 1000;
       if (wait_toggle_count == 0) wait_toggle_count = 1;
 #if DBUG
@@ -758,7 +762,7 @@ void tune_stepscore (void) {
       tune_stopnote (chan);
     }
     else if (opcode == CMD_PLAYNOTE) { /* play note */
-      note = pgm_read_byte(score_cursor++); // argument evaluation order is undefined in C!
+      note = Playtune::isprogmem ? pgm_read_byte(score_cursor++) : (byte)*score_cursor++; // argument evaluation order is undefined in C!
       if (volume_present) ++score_cursor; // ignore volume if present
       tune_playnote (chan, note);
     }
