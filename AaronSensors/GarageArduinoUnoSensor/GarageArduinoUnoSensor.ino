@@ -31,7 +31,7 @@
 //#define MY_DEBUG
 
 // Enable and select radio type attached
-#define MY_RADIO_NRF24
+#define MY_RADIO_RF24
 //#define MY_RADIO_RFM69
 
 #include <SPI.h>
@@ -58,7 +58,7 @@
 #define HUMIDITY_SENSOR_DIGITAL_PIN 3
 #define BAYDOORSENSOR_PIN 4
 #define DOORSENSOR_PIN 5
-#define RELAY1_PIN 6
+#define RELAY1_PIN 8
 
 unsigned long FORCE_REFRESH = 60L*1000L;
 unsigned long DHT_REFRESH = 30L*1000L;
@@ -112,7 +112,8 @@ void setup()
 void presentation()  
 { 
 	// Send the Sketch Version Information to the Gateway
-	sendSketchInfo("Garage Sensor", "1.0");
+  //sendSketchInfo("Garage Sensor", "1.0"); //Version 2.1.1 of library
+	sendSketchInfo("Garage Sensor", "2.0"); //Version 2.3.2 of libarary
 	wait(LONG_WAIT);
 
 	// Register all sensors to gw (they will be created as child devices)
@@ -124,7 +125,8 @@ void presentation()
 	wait(LONG_WAIT);
 	present(CHILD_ID_DOORSENSOR, S_DOOR, "Back Door magnet sensor");
 	wait(LONG_WAIT);
-	present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay");
+	//present(CHILD_ID_RELAY1, S_LIGHT, "Bay Door Relay"); //previous version
+  present(CHILD_ID_RELAY1, S_BINARY, "Bay Door Relay");
 	wait(LONG_WAIT);
 }
 
@@ -144,12 +146,13 @@ void loop()
 
 	if(firstRun)
 	{
-		//Clear buttons
+		//Clear buttons - send relay value
 		send(msgBayDoorSwitch.set(0));
 
 		Serial.println("Setting up subscriptions...");
 		wait(LONG_WAIT);
-		request(CHILD_ID_RELAY1, V_LIGHT);
+		//request(CHILD_ID_RELAY1, V_LIGHT); //previous version
+    request(CHILD_ID_RELAY1, V_STATUS);
 		wait(LONG_WAIT);
 		firstRun = 0;
 	}
